@@ -10,7 +10,7 @@
 
     This will write the surprisal values to path/to/surprisals_output.
 
-*References*
+##### References
 
 [1] Dyer, C., Kuncoro, A., Ballesteros, M., & Smith, N. A. (2016). Recurrent Neural Network Grammars. In Proceedings of NAACL-HLT (pp. 199-209).
 
