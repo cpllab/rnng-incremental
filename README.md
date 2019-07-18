@@ -10,7 +10,8 @@
 
     This will write the surprisal values to path/to/surprisals_output.
 
-References:
+*References*
+
 [1] Dyer, C., Kuncoro, A., Ballesteros, M., & Smith, N. A. (2016). Recurrent Neural Network Grammars. In Proceedings of NAACL-HLT (pp. 199-209).
 
 [2] Stern, M., Fried, D., & Klein, D. (2017, September). Effective Inference for Generative Neural Parsing. In Proceedings of the 2017 Conference on Empirical Methods in Natural Language Processing (pp. 1695-1700).
