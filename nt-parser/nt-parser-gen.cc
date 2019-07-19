@@ -569,7 +569,7 @@ struct ParserStateAction {
       assert (p_state->stack_content.size() == p_state->stack.size());
 
       // cerr << "Doing REDUCE operation" << endl;
-      
+
       p_state->is_open_paren.pop_back(); // nt symbol
       p_state->stack.pop_back(); // nonterminal dummy
       p_state->stack_lstm.rewind_one_step(); // nt symbol
@@ -579,11 +579,11 @@ struct ParserStateAction {
       p_state->stack_content.pop_back();
       assert (p_state->stack.size() == p_state->stack_content.size());
       // cerr << "Done reducing" << endl;
-      
+
       // BUILD TREE EMBEDDING USING BIDIR LSTM
       p_state->const_lstm_fwd.add_input(nonterminal);
       p_state->const_lstm_rev.add_input(nonterminal);
-      
+
       for (i = 0; i < nchildren; ++i) {
 	p_state->const_lstm_fwd.add_input(children[i]);
 	p_state->const_lstm_rev.add_input(children[nchildren - i - 1]);
@@ -599,7 +599,7 @@ struct ParserStateAction {
       p_state->stack_lstm.add_input(composed);
       p_state->stack.push_back(composed);
       p_state->stack_content.push_back(curr_word);
-      p_state->is_open_paren.push_back(-1); // we just closed a paren at this position            
+      p_state->is_open_paren.push_back(-1); // we just closed a paren at this position
     }else { // SHIFT
       assert (wordid != 0);
       p_state->stack_content.push_back(termdict.convert(wordid)); //add the string of the word to the stack
@@ -609,7 +609,7 @@ struct ParserStateAction {
       p_state->term_lstm.add_input(word);
       p_state->stack.push_back(word);
       p_state->stack_lstm.add_input(word);
-      p_state->is_open_paren.push_back(-1);        
+      p_state->is_open_paren.push_back(-1);
     }
     return p_state;
   }
@@ -732,7 +732,7 @@ vector<double> log_prob_parser_beam2(ComputationGraph* hg,
 
     vector<double> surprisals;
     vector<double> log_probs;
-    
+
     for (unsigned w_index = 0; w_index < sent.size(); ++w_index) {
       cerr << "Word index: " << w_index << " " << termdict.convert(sent.raw[w_index]) << "; thiswords size: " << pq_this.size() << endl;
       vector<ParserState*> pq_next;
@@ -746,7 +746,7 @@ vector<double> log_prob_parser_beam2(ComputationGraph* hg,
             if (IsActionForbidden_Generative(adict.convert(a), p_this->prev_a, p_this->terms.size(), p_this->stack.size(), p_this->nopen_parens))
               continue;
             current_valid_actions.push_back(a);
-          }   
+          }
           // cerr << "valid action size = " << current_valid_actions.size() << endl;
           Expression stack_summary = p_this->stack_lstm.back();
           Expression action_summary = p_this->action_lstm.back();
@@ -770,9 +770,9 @@ vector<double> log_prob_parser_beam2(ComputationGraph* hg,
 	    unsigned wordid = 0;
 	    // assert(termc < sent.size());
 	    wordid = sent.raw[w_index];
-	    if (a_char == 'S') 
+	    if (a_char == 'S')
 	      new_score += as_scalar((-cfsm->neg_log_softmax(nlp_t, wordid)).value());
-	    
+
 	    ParserStateAction* p_state_action = new ParserStateAction(p_this, action, a_char, wordid, new_score,  fringe.size());
 	    fringe.push_back(p_state_action);
 	  }// all current actions
@@ -792,7 +792,7 @@ vector<double> log_prob_parser_beam2(ComputationGraph* hg,
               pq_next.push_back(newstate);
             }else if (fringe[k]->a_char == 'R'){
               int i = newstate->is_open_paren.size() - 1; //get the last thing on the stack
-              while(newstate->is_open_paren[i] < 0) { --i; } 
+              while(newstate->is_open_paren[i] < 0) { --i; }
               if(i>=0){
                 pq_this_new.push_back(newstate);
               }else{
@@ -800,7 +800,7 @@ vector<double> log_prob_parser_beam2(ComputationGraph* hg,
               }
             }else{
               pq_this_new.push_back(newstate);
-            }            
+            }
           }else{
             if(fringe[k]->a_char == 'S' && fast_track_count < fast_track_size){
 	      ParserState* newstate = fringe[k]->applyAction(hg, cbias, cW, p_a, p_w, p_nt, p_ntup, apply_dropout);
@@ -808,7 +808,7 @@ vector<double> log_prob_parser_beam2(ComputationGraph* hg,
               fast_track_count += 1;
             }else{
 	      // don't need to do anything, fringe is local
-              // need_to_delete_psa.insert(fringe[k]); 
+              // need_to_delete_psa.insert(fringe[k]);
             }
           }
         }
@@ -854,14 +854,14 @@ vector<double> log_prob_parser_beam2(ComputationGraph* hg,
           if (a[0] == 'N') {
             int nt = action2NTindex[action];
             cerr << " (" << ntermdict.convert(nt);
-          }     
+          }
           if (a[0] == 'S'){
             cerr << " " << termdict.convert(sent.raw[shift_count]);
-            shift_count++; 
+            shift_count++;
           }
         }
-        cerr << "\n";    
-      }      
+        cerr << "\n";
+      }
 
       cerr << "delete " << pq_this.size() << " ParserState pointers in thiswords." << endl;
       for (ParserState* ps: pq_this) {delete ps;}
@@ -1019,7 +1019,7 @@ vector<double> log_prob_parser_beam(ComputationGraph* hg,
             if (IsActionForbidden_Generative(adict.convert(a), p_this->prev_a, p_this->terms.size(), p_this->stack.size(), p_this->nopen_parens))
               continue;
             current_valid_actions.push_back(a);
-          }   
+          }
           // cerr << "valid action size = " << current_valid_actions.size() << endl;
           Expression stack_summary = p_this->stack_lstm.back();
           Expression action_summary = p_this->action_lstm.back();
@@ -1126,7 +1126,7 @@ vector<double> log_prob_parser_beam(ComputationGraph* hg,
               p_state->stack_lstm.add_input(composed);
               p_state->stack.push_back(composed);
               p_state->stack_content.push_back(curr_word);
-              p_state->is_open_paren.push_back(-1); // we just closed a paren at this position            
+              p_state->is_open_paren.push_back(-1); // we just closed a paren at this position
             }else { // SHIFT
               unsigned wordid = 0;
               // assert(termc < sent.size());
@@ -1141,10 +1141,10 @@ vector<double> log_prob_parser_beam(ComputationGraph* hg,
               p_state->term_lstm.add_input(word);
               p_state->stack.push_back(word);
               p_state->stack_lstm.add_input(word);
-              p_state->is_open_paren.push_back(-1);        
+              p_state->is_open_paren.push_back(-1);
             }
             fringe.push_back(p_state);
-          } // all current actions  
+          } // all current actions
         } // iterate all parser states in thiswords --  for (auto p_this : pq_this){
 
         cerr << "fringe size is " << fringe.size() << endl;
@@ -1164,7 +1164,7 @@ vector<double> log_prob_parser_beam(ComputationGraph* hg,
               pq_next.push_back(fringe[k]);
             }else if (fringe[k]->prev_a == 'R'){
               int i = fringe[k]->is_open_paren.size() - 1; //get the last thing on the stack
-              while(fringe[k]->is_open_paren[i] < 0) { --i; } 
+              while(fringe[k]->is_open_paren[i] < 0) { --i; }
               if(i>=0){
                 pq_this.push_back(fringe[k]);
               }else{
@@ -1172,7 +1172,7 @@ vector<double> log_prob_parser_beam(ComputationGraph* hg,
               }
             }else{
               pq_this.push_back(fringe[k]);
-            }            
+            }
           }else{
             if(fringe[k]->prev_a == 'S' && fast_track_count < fast_track_size){
               pq_next.push_back(fringe[k]);
@@ -1187,7 +1187,7 @@ vector<double> log_prob_parser_beam(ComputationGraph* hg,
         for (ParserState* ps: need_to_delete) {delete ps; delcount++;}
         need_to_delete.clear();
         cerr << "delete " << delcount << " in fringe, add " << pq_this.size() << " from fringe to thiswords, nextwords size is " << pq_next.size() << endl;
-	
+
       } // while (pq_next.size() < beam_size){
 
       // add parser state pointers from pq_next to need_to_delete
@@ -1209,14 +1209,14 @@ vector<double> log_prob_parser_beam(ComputationGraph* hg,
           if (a[0] == 'N') {
             int nt = action2NTindex[action];
             cerr << " (" << ntermdict.convert(nt);
-          }     
+          }
           if (a[0] == 'S'){
             cerr << " " << termdict.convert(sent.raw[shift_count]);
-            shift_count++; 
+            shift_count++;
           }
         }
-        cerr << "\n";    
-      }      
+        cerr << "\n";
+      }
 
       cerr << "delete " << pq_this.size() << " ParserState pointers in thiswords." << endl;
       for (ParserState* ps: pq_this) {delete ps;}
@@ -1274,7 +1274,7 @@ void signal_callback_handler(int /* signum */) {
 int main(int argc, char** argv) {
   dynet::initialize(argc, argv);
 
-  cerr << "COMMAND LINE:"; 
+  cerr << "COMMAND LINE:";
   for (unsigned i = 0; i < static_cast<unsigned>(argc); ++i) cerr << ' ' << argv[i];
   cerr << endl;
   unsigned status_every_i_iterations = 100;
@@ -1345,7 +1345,7 @@ int main(int argc, char** argv) {
   if (conf.count("eval_data")) {
     cerr << "Loading evaluation set\n";
     eval_corpus.load_raw_sent(conf["eval_data"].as<string>());
-  }  
+  }
 
   for (unsigned i = 0; i < adict.size(); ++i) {
     const string& a = adict.convert(i);
@@ -1420,7 +1420,7 @@ int main(int argc, char** argv) {
            ComputationGraph hg;
            Expression tot_neglogprob;
            parser.log_prob_parser(&hg,tot_neglogprob,sentence,actions,&right,false);
-           
+
            double lp = as_scalar(hg.incremental_forward(tot_neglogprob));
            if (lp < 0) {
              cerr << "Log prob < 0 on sentence " << order[si] << ": lp=" << lp << endl;
@@ -1496,9 +1496,9 @@ int main(int argc, char** argv) {
           // easier to refer to it in a shell script.
           if (!softlinkCreated) {
             string softlink = " latest_model";
-            if (system((string("rm -f ") + softlink).c_str()) == 0 && 
+            if (system((string("rm -f ") + softlink).c_str()) == 0 &&
                 system((string("ln -s ") + fname + softlink).c_str()) == 0) {
-              cerr << "Created " << softlink << " as a soft link to " << fname 
+              cerr << "Created " << softlink << " as a soft link to " << fname
                    << " for convenience." << endl;
             }
             softlinkCreated = true;
@@ -1547,15 +1547,18 @@ int main(int argc, char** argv) {
       f_name = "./surprisals_"+conf["eval_data"].as<string>()+".txt";
     }
     f.open(f_name);
+
+    // output header
+    f << "sentence_id\ttoken_id\ttoken\tsurprisal\n";
+
     for (unsigned sii = 0; sii < eval_size; ++sii) {
       const auto& sentence=eval_corpus.sents[sii];
       ComputationGraph hg;
       vector<double> surprisals;
       surprisals = parser.log_prob_parser_beam2(&hg, sentence, &right, BEAM_SIZE, FASTTRACK_BEAM_SIZE, false);
-      for(unsigned k = 0; k < surprisals.size(); ++k){
-        f << termdict.convert(sentence.raw[k]) << "\t" << surprisals[k] <<"\n";
+      for(unsigned k = 0; k < surprisals.size(); ++k) {
+        f << sii << "\t" << k << "\t" << termdict.convert(sentence.raw[k]) << "\t" << surprisals[k] << "\n";
       }
-      f << "<eos>\t0.0\n";
       f.flush();
     }
     f.close();
