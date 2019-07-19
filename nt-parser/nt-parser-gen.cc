@@ -1557,7 +1557,7 @@ int main(int argc, char** argv) {
       vector<double> surprisals;
       surprisals = parser.log_prob_parser_beam2(&hg, sentence, &right, BEAM_SIZE, FASTTRACK_BEAM_SIZE, false);
       for(unsigned k = 0; k < surprisals.size(); ++k) {
-        f << sii << "\t" << k << "\t" << termdict.convert(sentence.raw[k]) << "\t" << surprisals[k] << "\n";
+        f << (sii + 1) << "\t" << (k + 1) << "\t" << termdict.convert(sentence.raw[k]) << "\t" << surprisals[k] << "\n";
       }
       f.flush();
     }
