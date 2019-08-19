@@ -48,7 +48,7 @@ unsigned LSTM_INPUT_DIM = 60;
 
 unsigned BEAM_SIZE = 100;
 unsigned FASTTRACK_BEAM_SIZE = 5;
-unsigned WORD_BEAM_SIZE = 10
+unsigned WORD_BEAM_SIZE = 10;
 
 unsigned ACTION_SIZE = 0;
 unsigned VOCAB_SIZE = 0;
