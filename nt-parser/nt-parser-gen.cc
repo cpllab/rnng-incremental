@@ -48,6 +48,7 @@ unsigned LSTM_INPUT_DIM = 60;
 
 unsigned BEAM_SIZE = 100;
 unsigned FASTTRACK_BEAM_SIZE = 5;
+unsigned WORD_BEAM_SIZE = 10
 
 unsigned ACTION_SIZE = 0;
 unsigned VOCAB_SIZE = 0;
@@ -88,6 +89,7 @@ void InitCommandLine(int argc, char** argv, po::variables_map* conf) {
         ("words,w", po::value<string>(), "Pretrained word embeddings")
         ("beam_size", po::value<unsigned>()->default_value(100), "beam size")
         ("fasttrack_beam_size", po::value<unsigned>()->default_value(5), "fast track beam size")
+        ("word_beam_size", po::value<unsigned>()->default_value(10), "word beam size")
         ("help,h", "Help");
   po::options_description dcmdline_options;
   dcmdline_options.add(opts);
@@ -640,6 +642,7 @@ vector<double> log_prob_parser_beam2(ComputationGraph* hg,
                      double *right,
                      unsigned beam_size,
                      unsigned fast_track_size,
+                     unsigned word_beam_size,
                      bool is_evaluation) {
     vector<unsigned> results;
     vector<string> stack_content;
@@ -841,7 +844,7 @@ vector<double> log_prob_parser_beam2(ComputationGraph* hg,
       }
 
       // sort and prune parser states according to their forward probs from low to high, and then print a list of parses
-      prune(pq_next, beam_size/10);
+      prune(pq_next, word_beam_size);
       cerr << "list of partial parses:" << endl;
       unsigned beam_index = 1;
       for(auto parser_state : pq_next){
@@ -940,6 +943,8 @@ int main(int argc, char** argv) {
   LSTM_INPUT_DIM = conf["lstm_input_dim"].as<unsigned>();
   BEAM_SIZE = conf["beam_size"].as<unsigned>();
   FASTTRACK_BEAM_SIZE = conf["fasttrack_beam_size"].as<unsigned>();
+  WORD_BEAM_SIZE = conf["word_beam_size"].as<unsigned>();
+
   if (conf.count("train") && conf.count("dev_data") == 0) {
     cerr << "You specified --train but did not specify --dev_data FILE\n";
     return 1;
@@ -1196,7 +1201,7 @@ int main(int argc, char** argv) {
       const auto& sentence=eval_corpus.sents[sii];
       ComputationGraph hg;
       vector<double> surprisals;
-      surprisals = parser.log_prob_parser_beam2(&hg, sentence, &right, BEAM_SIZE, FASTTRACK_BEAM_SIZE, false);
+      surprisals = parser.log_prob_parser_beam2(&hg, sentence, &right, BEAM_SIZE, FASTTRACK_BEAM_SIZE, WORD_BEAM_SIZE, false);
       for(unsigned k = 0; k < surprisals.size(); ++k){
         f << termdict.convert(sentence.raw[k]) << "\t" << surprisals[k] <<"\n";
       }
