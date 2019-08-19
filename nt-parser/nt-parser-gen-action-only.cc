@@ -899,7 +899,7 @@ vector<double> log_prob_parser_beam2(ComputationGraph* hg,
       for (auto ps : pq_next){
         marginal_prob += exp(ps->score);
       }
-      log_probs.push_back(-log(marginal_prob));
+      log_probs.push_back(-log2(marginal_prob));
 
       for (auto ps : pq_next){
         ParserState* p_new = new ParserState();
