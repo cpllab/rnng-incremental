@@ -105,11 +105,11 @@ void InitCommandLine(int argc, char** argv, po::variables_map* conf) {
 }
 
 struct ParserBuilder {
-  LSTMBuilder stack_lstm; // (layers, input, hidden, trainer)
-  LSTMBuilder term_lstm; // (layers, input, hidden, trainer)
+  // LSTMBuilder stack_lstm; // (layers, input, hidden, trainer)
+  // LSTMBuilder term_lstm; // (layers, input, hidden, trainer)
   LSTMBuilder action_lstm;
-  LSTMBuilder const_lstm_fwd;
-  LSTMBuilder const_lstm_rev;
+  // LSTMBuilder const_lstm_fwd;
+  // LSTMBuilder const_lstm_rev;
   LookupParameter p_w; // word embeddings
   LookupParameter p_t; // pretrained word embeddings (not updated)
   LookupParameter p_nt; // nonterminal embeddings
@@ -117,15 +117,15 @@ struct ParserBuilder {
   LookupParameter p_a; // input action embeddings
   Parameter p_pbias; // parser state bias
   Parameter p_A; // action lstm to parser state
-  Parameter p_S; // stack lstm to parser state
-  Parameter p_T; // term lstm to parser state
+  // Parameter p_S; // stack lstm to parser state
+  // Parameter p_T; // term lstm to parser state
   //Parameters* p_pbias2; // parser state bias
   //Parameters* p_A2; // action lstm to parser state
   //Parameters* p_S2; // stack lstm to parser state
   //Parameters* p_w2l; // word to LSTM input
   //Parameters* p_t2l; // pretrained word embeddings to LSTM input
   //Parameters* p_ib; // LSTM input bias
-  Parameter p_cbias; // composition function bias
+  // Parameter p_cbias; // composition function bias
   Parameter p_p2a;   // parser state to action
   Parameter p_action_start;  // action bias
   Parameter p_abias;  // action bias
@@ -134,26 +134,26 @@ struct ParserBuilder {
   Parameter p_cW;
 
   explicit ParserBuilder(ParameterCollection* model, const unordered_map<unsigned, vector<float>>& pretrained) :
-      stack_lstm(LAYERS, LSTM_INPUT_DIM, HIDDEN_DIM, *model),
-      term_lstm(LAYERS, INPUT_DIM, HIDDEN_DIM, *model),  // sequence of generated terminals
+      // stack_lstm(LAYERS, LSTM_INPUT_DIM, HIDDEN_DIM, *model),
+      // term_lstm(LAYERS, INPUT_DIM, HIDDEN_DIM, *model),  // sequence of generated terminals
       action_lstm(LAYERS, ACTION_DIM, HIDDEN_DIM, *model),
-      const_lstm_fwd(1, LSTM_INPUT_DIM, LSTM_INPUT_DIM, *model), // used to compose children of a node into a representation of the node
-      const_lstm_rev(1, LSTM_INPUT_DIM, LSTM_INPUT_DIM, *model), // used to compose children of a node into a representation of the node
+      // const_lstm_fwd(1, LSTM_INPUT_DIM, LSTM_INPUT_DIM, *model), // used to compose children of a node into a representation of the node
+      // const_lstm_rev(1, LSTM_INPUT_DIM, LSTM_INPUT_DIM, *model), // used to compose children of a node into a representation of the node
       p_w(model->add_lookup_parameters(VOCAB_SIZE, {INPUT_DIM})),
       p_t(model->add_lookup_parameters(VOCAB_SIZE, {INPUT_DIM})),
-      p_nt(model->add_lookup_parameters(NT_SIZE, {LSTM_INPUT_DIM})),
-      p_ntup(model->add_lookup_parameters(NT_SIZE, {LSTM_INPUT_DIM})),
+      // p_nt(model->add_lookup_parameters(NT_SIZE, {LSTM_INPUT_DIM})),
+      // p_ntup(model->add_lookup_parameters(NT_SIZE, {LSTM_INPUT_DIM})),
       p_a(model->add_lookup_parameters(ACTION_SIZE, {ACTION_DIM})),
       p_pbias(model->add_parameters({HIDDEN_DIM})),
       p_A(model->add_parameters({HIDDEN_DIM, HIDDEN_DIM})),
-      p_S(model->add_parameters({HIDDEN_DIM, HIDDEN_DIM})),
-      p_T(model->add_parameters({HIDDEN_DIM, HIDDEN_DIM})),
+      // p_S(model->add_parameters({HIDDEN_DIM, HIDDEN_DIM})),
+      // p_T(model->add_parameters({HIDDEN_DIM, HIDDEN_DIM})),
       //p_pbias2(model->add_parameters({HIDDEN_DIM})),
       //p_A2(model->add_parameters({HIDDEN_DIM, HIDDEN_DIM})),
       //p_S2(model->add_parameters({HIDDEN_DIM, HIDDEN_DIM})),
       //p_w2l(model->add_parameters({LSTM_INPUT_DIM, INPUT_DIM})),
       //p_ib(model->add_parameters({LSTM_INPUT_DIM})),
-      p_cbias(model->add_parameters({LSTM_INPUT_DIM})),
+      // p_cbias(model->add_parameters({LSTM_INPUT_DIM})),
       p_p2a(model->add_parameters({ACTION_SIZE, HIDDEN_DIM})),
       p_action_start(model->add_parameters({ACTION_DIM})),
       p_abias(model->add_parameters({ACTION_SIZE})),
@@ -204,38 +204,38 @@ vector<unsigned> log_prob_parser(ComputationGraph* hg,
     if (sample) apply_dropout = false;
 
     if (apply_dropout) {
-      stack_lstm.set_dropout(DROPOUT);
-      term_lstm.set_dropout(DROPOUT);
+      // stack_lstm.set_dropout(DROPOUT);
+      // term_lstm.set_dropout(DROPOUT);
       action_lstm.set_dropout(DROPOUT);
-      const_lstm_fwd.set_dropout(DROPOUT);
-      const_lstm_rev.set_dropout(DROPOUT);
+      // const_lstm_fwd.set_dropout(DROPOUT);
+      // const_lstm_rev.set_dropout(DROPOUT);
     } else {
-      stack_lstm.disable_dropout();
-      term_lstm.disable_dropout();
+      // stack_lstm.disable_dropout();
+      // term_lstm.disable_dropout();
       action_lstm.disable_dropout();
-      const_lstm_fwd.disable_dropout();
-      const_lstm_rev.disable_dropout();
+      // const_lstm_fwd.disable_dropout();
+      // const_lstm_rev.disable_dropout();
     }
-    term_lstm.new_graph(*hg);
-    stack_lstm.new_graph(*hg);
+    // term_lstm.new_graph(*hg);
+    // stack_lstm.new_graph(*hg);
     action_lstm.new_graph(*hg);
-    const_lstm_fwd.new_graph(*hg);
-    const_lstm_rev.new_graph(*hg);
+    // const_lstm_fwd.new_graph(*hg);
+    // const_lstm_rev.new_graph(*hg);
     cfsm->new_graph(*hg);
-    term_lstm.start_new_sequence();
-    stack_lstm.start_new_sequence();
+    // term_lstm.start_new_sequence();
+    // stack_lstm.start_new_sequence();
     action_lstm.start_new_sequence();
     // variables in the computation graph representing the parameters
     Expression pbias = parameter(*hg, p_pbias);
-    Expression S = parameter(*hg, p_S);
+    // Expression S = parameter(*hg, p_S);
     Expression A = parameter(*hg, p_A);
-    Expression T = parameter(*hg, p_T);
+    // Expression T = parameter(*hg, p_T);
     //Expression pbias2 = parameter(*hg, p_pbias2);
     //Expression S2 = parameter(*hg, p_S2);
     //Expression A2 = parameter(*hg, p_A2);
 
     //Expression ib = parameter(*hg, p_ib);
-    Expression cbias = parameter(*hg, p_cbias);
+    // Expression cbias = parameter(*hg, p_cbias);
     //Expression w2l = parameter(*hg, p_w2l);
     Expression p2a = parameter(*hg, p_p2a);
     Expression abias = parameter(*hg, p_abias);
@@ -245,12 +245,12 @@ vector<unsigned> log_prob_parser(ComputationGraph* hg,
     action_lstm.add_input(action_start);
 
     vector<Expression> terms(1, lookup(*hg, p_w, kSOS));
-    term_lstm.add_input(terms.back());
+    // term_lstm.add_input(terms.back());
 
-    vector<Expression> stack;  // variables representing subtree embeddings
-    stack.push_back(parameter(*hg, p_stack_guard));
+    // vector<Expression> stack;  // variables representing subtree embeddings
+    // stack.push_back(parameter(*hg, p_stack_guard));
     // drive dummy symbol on stack through LSTM
-    stack_lstm.add_input(stack.back());
+    // stack_lstm.add_input(stack.back());
     vector<int> is_open_paren; // -1 if no nonterminal has a parenthesis open, otherwise index of NT
     is_open_paren.push_back(-1); // corresponds to dummy symbol
     vector<Expression> log_probs;
@@ -261,27 +261,29 @@ vector<unsigned> log_prob_parser(ComputationGraph* hg,
     int nopen_parens = 0;
     char prev_a = '0';
     unsigned termc = 0;
-    while(stack.size() > 2 || termc == 0) {
-      assert (stack.size() == stack_content.size());
+    while(stack_content.size() > 2 || termc == 0) {
+      // assert (stack.size() == stack_content.size());
       // get list of possible actions for the current parser state
       current_valid_actions.clear();
       for (auto a: possible_actions) {
-        if (IsActionForbidden_Generative(adict.convert(a), prev_a, terms.size(), stack.size(), nopen_parens))
+        if (IsActionForbidden_Generative(adict.convert(a), prev_a, terms.size(), stack_content.size(), nopen_parens))
           continue;
         current_valid_actions.push_back(a);
       }
-      //cerr << "valid actions = " << current_valid_actions.size() << endl;
+      // if (sample)
+      //   cerr << "valid actions = " << current_valid_actions.size() << endl;
 
       //onerep
-      Expression stack_summary = stack_lstm.back();
+      // Expression stack_summary = stack_lstm.back();
       Expression action_summary = action_lstm.back();
-      Expression term_summary = term_lstm.back();
+      // Expression term_summary = term_lstm.back();
       if (apply_dropout) {
-        stack_summary = dropout(stack_summary, DROPOUT);
+        // stack_summary = dropout(stack_summary, DROPOUT);
         action_summary = dropout(action_summary, DROPOUT);
-        term_summary = dropout(term_summary, DROPOUT);
+        // term_summary = dropout(term_summary, DROPOUT);
       }
-      Expression p_t = affine_transform({pbias, S, stack_summary, A, action_summary, T, term_summary});
+      // Expression p_t = affine_transform({pbias, S, stack_summary, A, action_summary, T, term_summary});
+      Expression p_t = affine_transform({pbias, A, action_summary});
       Expression nlp_t = rectify(p_t);
       //tworep*
       //Expression p_t = affine_transform({pbias, S, stack_lstm.back(), A, action_lstm.back()});
@@ -316,23 +318,25 @@ vector<unsigned> log_prob_parser(ComputationGraph* hg,
           abort();
         }
         action = correct_actions[action_count];
-        //cerr << "prob ="; for (unsigned i = 0; i < adist.size(); ++i) { cerr << ' ' << adict.Convert(i) << ':' << adist[i]; }
-        //cerr << endl;
+        // cerr << adict.convert(action) << endl;
         ++action_count;
         log_probs.push_back(pick(adiste, action));
       }
       results.push_back(action);
 
-      // add current action to action LSTM
-      Expression actione = lookup(*hg, p_a, action);
-      action_lstm.add_input(actione);
-
       // do action
       const string& actionString=adict.convert(action);
-      //cerr << "ACT: " << actionString << endl;
+      // cerr << "ACT: " << actionString << endl;
       const char ac = actionString[0];
       const char ac2 = actionString[1];
       prev_a = ac;
+
+      // add current REDUCE or NT action to action LSTM
+      // add specific word embedding for SHIFT action
+      if (ac != 'S'){
+        Expression actione = lookup(*hg, p_a, action);
+        action_lstm.add_input(actione);
+      }
 
       if (ac =='S' && ac2=='H') {  // SHIFT
         unsigned wordid = 0;
@@ -351,13 +355,18 @@ vector<unsigned> log_prob_parser(ComputationGraph* hg,
           log_probs.push_back(-cfsm->neg_log_softmax(nlp_t, wordid));
         }
         assert (wordid != 0);
+
+        // add specific word embedding for SHIFT action
+        Expression actione = lookup(*hg, p_w, wordid);
+        action_lstm.add_input(actione);
+
         stack_content.push_back(termdict.convert(wordid)); //add the string of the word to the stack
         ++termc;
         Expression word = lookup(*hg, p_w, wordid);
         terms.push_back(word);
-        term_lstm.add_input(word);
-        stack.push_back(word);
-        stack_lstm.add_input(word);
+        // term_lstm.add_input(word);
+        // stack.push_back(word);
+        // stack_lstm.add_input(word);
         is_open_paren.push_back(-1);
       } else if (ac == 'N') { // NT
         ++nopen_parens;
@@ -366,24 +375,26 @@ vector<unsigned> log_prob_parser(ComputationGraph* hg,
         int nt_index = it->second;
         nt_count++;
         stack_content.push_back(ntermdict.convert(nt_index));
-        Expression nt_embedding = lookup(*hg, p_nt, nt_index);
-        stack.push_back(nt_embedding);
-        stack_lstm.add_input(nt_embedding);
+        // Expression nt_embedding = lookup(*hg, p_nt, nt_index);
+        // stack.push_back(nt_embedding);
+        // stack_lstm.add_input(nt_embedding);
         is_open_paren.push_back(nt_index);
       } else { // REDUCE
         --nopen_parens;
-        assert(stack.size() > 2); // dummy symbol means > 2 (not >= 2)
-        assert(stack_content.size() > 2 && stack.size() == stack_content.size());
+        // assert(stack.size() > 2); // dummy symbol means > 2 (not >= 2)
+        // assert(stack_content.size() > 2 && stack.size() == stack_content.size());
+        assert(stack_content.size() > 2);
+
         // find what paren we are closing
         int i = is_open_paren.size() - 1; //get the last thing on the stack
         while(is_open_paren[i] < 0) { --i; assert(i >= 0); } //iteratively decide whether or not it's a non-terminal
-        Expression nonterminal = lookup(*hg, p_ntup, is_open_paren[i]);
+        // Expression nonterminal = lookup(*hg, p_ntup, is_open_paren[i]);
         int nchildren = is_open_paren.size() - i - 1;
         assert(nchildren > 0);
         //cerr << "  number of children to reduce: " << nchildren << endl;
-        vector<Expression> children(nchildren);
-        const_lstm_fwd.start_new_sequence();
-        const_lstm_rev.start_new_sequence();
+        // vector<Expression> children(nchildren);
+        // const_lstm_fwd.start_new_sequence();
+        // const_lstm_rev.start_new_sequence();
 
         // REMOVE EVERYTHING FROM THE STACK THAT IS GOING
         // TO BE COMPOSED INTO A TREE EMBEDDING
@@ -392,44 +403,44 @@ vector<unsigned> log_prob_parser(ComputationGraph* hg,
         //cerr << "Now printing the children" << endl;
         //cerr << "--------------------------------" << endl;
         for (i = 0; i < nchildren; ++i) {
-          assert (stack_content.size() == stack.size());
-          children[i] = stack.back();
-          stack.pop_back();
-          stack_lstm.rewind_one_step();
+          // assert (stack_content.size() == stack.size());
+          // children[i] = stack.back();
+          // stack.pop_back();
+          // stack_lstm.rewind_one_step();
           is_open_paren.pop_back();
           curr_word = stack_content.back();
           //cerr << "At the back of the stack (supposed to be one of the children): " << curr_word << endl;
           stack_content.pop_back();
         }
-        assert (stack_content.size() == stack.size());
+        // assert (stack_content.size() == stack.size());
         //cerr << "Doing REDUCE operation" << endl;
         is_open_paren.pop_back(); // nt symbol
-        stack.pop_back(); // nonterminal dummy
-        stack_lstm.rewind_one_step(); // nt symbol
+        // stack.pop_back(); // nonterminal dummy
+        // stack_lstm.rewind_one_step(); // nt symbol
         curr_word = stack_content.back();
         //cerr << "--------------------------------" << endl;
         //cerr << "At the back of the stack (supposed to be the non-terminal symbol) : " << curr_word << endl;
         stack_content.pop_back();
-        assert (stack.size() == stack_content.size());
+        // assert (stack.size() == stack_content.size());
         //cerr << "Done reducing" << endl;
 
-        // BUILD TREE EMBEDDING USING BIDIR LSTM
-        const_lstm_fwd.add_input(nonterminal);
-        const_lstm_rev.add_input(nonterminal);
-        for (i = 0; i < nchildren; ++i) {
-          const_lstm_fwd.add_input(children[i]);
-          const_lstm_rev.add_input(children[nchildren - i - 1]);
-        }
-        Expression cfwd = const_lstm_fwd.back();
-        Expression crev = const_lstm_rev.back();
-        if (apply_dropout) {
-          cfwd = dropout(cfwd, DROPOUT);
-          crev = dropout(crev, DROPOUT);
-        }
-        Expression c = concatenate({cfwd, crev});
-        Expression composed = rectify(affine_transform({cbias, cW, c}));
-        stack_lstm.add_input(composed);
-        stack.push_back(composed);
+        // // BUILD TREE EMBEDDING USING BIDIR LSTM
+        // const_lstm_fwd.add_input(nonterminal);
+        // const_lstm_rev.add_input(nonterminal);
+        // for (i = 0; i < nchildren; ++i) {
+        //   const_lstm_fwd.add_input(children[i]);
+        //   const_lstm_rev.add_input(children[nchildren - i - 1]);
+        // }
+        // Expression cfwd = const_lstm_fwd.back();
+        // Expression crev = const_lstm_rev.back();
+        // if (apply_dropout) {
+        //   cfwd = dropout(cfwd, DROPOUT);
+        //   crev = dropout(crev, DROPOUT);
+        // }
+        // Expression c = concatenate({cfwd, crev});
+        // Expression composed = rectify(affine_transform({cbias, cW, c}));
+        // stack_lstm.add_input(composed);
+        // stack.push_back(composed);
         stack_content.push_back(curr_word);
         //cerr << curr_word << endl;
         is_open_paren.push_back(-1); // we just closed a paren at this position
@@ -439,7 +450,7 @@ vector<unsigned> log_prob_parser(ComputationGraph* hg,
       cerr << "Unexecuted actions remain but final state reached!\n";
       abort();
     }
-    assert(stack.size() == 2); // guard symbol, root
+    assert(stack_content.size() == 2); // guard symbol, root
     Expression tot_neglogprob;
     if (!sample) {
       tot_neglogprob = -sum(log_probs);
@@ -452,17 +463,17 @@ vector<unsigned> log_prob_parser(ComputationGraph* hg,
   }
 
 struct ParserState {
-  LSTMBuilder stack_lstm;
-  LSTMBuilder term_lstm;
+  // LSTMBuilder stack_lstm;
+  // LSTMBuilder term_lstm;
   LSTMBuilder action_lstm;
-  LSTMBuilder const_lstm_fwd;
-  LSTMBuilder const_lstm_rev;
+  // LSTMBuilder const_lstm_fwd;
+  // LSTMBuilder const_lstm_rev;
 
   vector<Expression> terms;
   vector<int> is_open_paren;
   unsigned nt_count;
 
-  vector<Expression> stack;
+  // vector<Expression> stack;
   vector<string> stack_content;
   vector<unsigned> results;  // sequence of predicted actions
   // bool complete;
@@ -511,7 +522,9 @@ struct ParserStateAction {
     fringe_idx = idx;
   }
 
-  ParserState* applyAction(ComputationGraph* hg,  const Expression& cbias, const Expression& cW, const LookupParameter& p_a, const LookupParameter& p_w, const LookupParameter& p_nt, const LookupParameter& p_ntup, bool apply_dropout){ // p_a, p_nt, p_ntup
+  // ParserState* applyAction(ComputationGraph* hg,  const Expression& cbias, const Expression& cW, const LookupParameter& p_a, const LookupParameter& p_w, const LookupParameter& p_nt, const LookupParameter& p_ntup, bool apply_dropout){ // p_a, p_nt, p_ntup
+  ParserState* applyAction(ComputationGraph* hg,  const Expression& cW, const LookupParameter& p_a, const LookupParameter& p_w, bool apply_dropout){ // p_a, p_nt, p_ntup
+
 
     ParserState* p_state = new ParserState();
     *p_state = *ps;
@@ -522,7 +535,14 @@ struct ParserStateAction {
     p_state->results.push_back(action);
 
     // add current action to action LSTM
-    Expression actione = lookup(*hg, p_a, action);
+    Expression actione;
+    if (a_char =='S'){
+      assert (wordid != 0);
+      actione = lookup(*hg, p_w, wordid);
+    }else{
+      actione = lookup(*hg, p_a, action);
+    }
+    // Expression actione = lookup(*hg, p_a, action);
     p_state->action_lstm.add_input(actione);
 
     // do action
@@ -533,24 +553,26 @@ struct ParserStateAction {
       int nt_index = it->second;
       p_state->nt_count++;
       p_state->stack_content.push_back(ntermdict.convert(nt_index));
-      Expression nt_embedding = lookup(*hg, p_nt, nt_index);
-      p_state->stack.push_back(nt_embedding);
-      p_state->stack_lstm.add_input(nt_embedding);
+      // Expression nt_embedding = lookup(*hg, p_nt, nt_index);
+      // p_state->stack.push_back(nt_embedding);
+      // p_state->stack_lstm.add_input(nt_embedding);
       p_state->is_open_paren.push_back(nt_index);
     }else if (a_char == 'R'){
       --p_state->nopen_parens;
-      assert(p_state->stack.size() > 2); // dummy symbol means > 2 (not >= 2)
-      assert(p_state->stack_content.size() > 2 && p_state->stack.size() == p_state->stack_content.size());
+      // assert(p_state->stack.size() > 2); // dummy symbol means > 2 (not >= 2)
+      // assert(p_state->stack_content.size() > 2 && p_state->stack.size() == p_state->stack_content.size());
+      assert(p_state->stack_content.size() > 2);
+
       // find what paren we are closing
       int i = p_state->is_open_paren.size() - 1; //get the last thing on the stack
       while(p_state->is_open_paren[i] < 0) { --i; assert(i >= 0); } //iteratively decide whether or not it's a non-terminal
-      Expression nonterminal = lookup(*hg, p_ntup, p_state->is_open_paren[i]);
+      // Expression nonterminal = lookup(*hg, p_ntup, p_state->is_open_paren[i]);
       int nchildren = p_state->is_open_paren.size() - i - 1;
       assert(nchildren > 0);
       //cerr << "  number of children to reduce: " << nchildren << endl;
-      vector<Expression> children(nchildren);
-      p_state->const_lstm_fwd.start_new_sequence();
-      p_state->const_lstm_rev.start_new_sequence();
+      // vector<Expression> children(nchildren);
+      // p_state->const_lstm_fwd.start_new_sequence();
+      // p_state->const_lstm_rev.start_new_sequence();
 
       // REMOVE EVERYTHING FROM THE STACK THAT IS GOING
       // TO BE COMPOSED INTO A TREE EMBEDDING
@@ -559,59 +581,59 @@ struct ParserStateAction {
       // cerr << "Now printing the children" << endl;
       // cerr << "--------------------------------" << endl;
       for (i = 0; i < nchildren; ++i) {
-	assert (p_state->stack_content.size() == p_state->stack.size());
-	children[i] = p_state->stack.back();
-	p_state->stack.pop_back();
-	p_state->stack_lstm.rewind_one_step();
+	// assert (p_state->stack_content.size() == p_state->stack.size());
+	// children[i] = p_state->stack.back();
+	// p_state->stack.pop_back();
+	// p_state->stack_lstm.rewind_one_step();
 	p_state->is_open_paren.pop_back();
 	curr_word = p_state->stack_content.back();
 	// cerr << "At the back of the stack (supposed to be one of the children): " << curr_word << endl;
 	p_state->stack_content.pop_back();
       }
-      assert (p_state->stack_content.size() == p_state->stack.size());
+      // assert (p_state->stack_content.size() == p_state->stack.size());
 
       // cerr << "Doing REDUCE operation" << endl;
-
+      
       p_state->is_open_paren.pop_back(); // nt symbol
-      p_state->stack.pop_back(); // nonterminal dummy
-      p_state->stack_lstm.rewind_one_step(); // nt symbol
+      // p_state->stack.pop_back(); // nonterminal dummy
+      // p_state->stack_lstm.rewind_one_step(); // nt symbol
       curr_word = p_state->stack_content.back();
       //cerr << "--------------------------------" << endl;
       //cerr << "At the back of the stack (supposed to be the non-terminal symbol) : " << curr_word << endl;
       p_state->stack_content.pop_back();
-      assert (p_state->stack.size() == p_state->stack_content.size());
+      // assert (p_state->stack.size() == p_state->stack_content.size());
       // cerr << "Done reducing" << endl;
-
+      
       // BUILD TREE EMBEDDING USING BIDIR LSTM
-      p_state->const_lstm_fwd.add_input(nonterminal);
-      p_state->const_lstm_rev.add_input(nonterminal);
-
-      for (i = 0; i < nchildren; ++i) {
-	p_state->const_lstm_fwd.add_input(children[i]);
-	p_state->const_lstm_rev.add_input(children[nchildren - i - 1]);
-      }
-      Expression cfwd = p_state->const_lstm_fwd.back();
-      Expression crev = p_state->const_lstm_rev.back();
-      if (apply_dropout) {
-	cfwd = dropout(cfwd, DROPOUT);
-	crev = dropout(crev, DROPOUT);
-      }
-      Expression c = concatenate({cfwd, crev});
-      Expression composed = rectify(affine_transform({cbias, cW, c}));
-      p_state->stack_lstm.add_input(composed);
-      p_state->stack.push_back(composed);
+      // p_state->const_lstm_fwd.add_input(nonterminal);
+      // p_state->const_lstm_rev.add_input(nonterminal);
+      
+ //      for (i = 0; i < nchildren; ++i) {
+	// p_state->const_lstm_fwd.add_input(children[i]);
+	// p_state->const_lstm_rev.add_input(children[nchildren - i - 1]);
+ //      }
+ //      Expression cfwd = p_state->const_lstm_fwd.back();
+ //      Expression crev = p_state->const_lstm_rev.back();
+ //      if (apply_dropout) {
+	// cfwd = dropout(cfwd, DROPOUT);
+	// crev = dropout(crev, DROPOUT);
+ //      }
+ //      Expression c = concatenate({cfwd, crev});
+ //      Expression composed = rectify(affine_transform({cbias, cW, c}));
+ //      p_state->stack_lstm.add_input(composed);
+ //      p_state->stack.push_back(composed);
       p_state->stack_content.push_back(curr_word);
-      p_state->is_open_paren.push_back(-1); // we just closed a paren at this position
+      p_state->is_open_paren.push_back(-1); // we just closed a paren at this position            
     }else { // SHIFT
       assert (wordid != 0);
       p_state->stack_content.push_back(termdict.convert(wordid)); //add the string of the word to the stack
       // ++termc;
       Expression word = lookup(*hg, p_w, wordid);
       p_state->terms.push_back(word);
-      p_state->term_lstm.add_input(word);
-      p_state->stack.push_back(word);
-      p_state->stack_lstm.add_input(word);
-      p_state->is_open_paren.push_back(-1);
+      // p_state->term_lstm.add_input(word);
+      // p_state->stack.push_back(word);
+      // p_state->stack_lstm.add_input(word);
+      p_state->is_open_paren.push_back(-1);        
     }
     return p_state;
   }
@@ -654,38 +676,38 @@ vector<double> log_prob_parser_beam2(ComputationGraph* hg,
     if (sample) apply_dropout = false;
 
     if (apply_dropout) {
-      stack_lstm.set_dropout(DROPOUT);
-      term_lstm.set_dropout(DROPOUT);
+      // stack_lstm.set_dropout(DROPOUT);
+      // term_lstm.set_dropout(DROPOUT);
       action_lstm.set_dropout(DROPOUT);
-      const_lstm_fwd.set_dropout(DROPOUT);
-      const_lstm_rev.set_dropout(DROPOUT);
+      // const_lstm_fwd.set_dropout(DROPOUT);
+      // const_lstm_rev.set_dropout(DROPOUT);
     } else {
-      stack_lstm.disable_dropout();
-      term_lstm.disable_dropout();
+      // stack_lstm.disable_dropout();
+      // term_lstm.disable_dropout();
       action_lstm.disable_dropout();
-      const_lstm_fwd.disable_dropout();
-      const_lstm_rev.disable_dropout();
+      // const_lstm_fwd.disable_dropout();
+      // const_lstm_rev.disable_dropout();
     }
-    term_lstm.new_graph(*hg);
-    stack_lstm.new_graph(*hg);
+    // term_lstm.new_graph(*hg);
+    // stack_lstm.new_graph(*hg);
     action_lstm.new_graph(*hg);
-    const_lstm_fwd.new_graph(*hg);
-    const_lstm_rev.new_graph(*hg);
+    // const_lstm_fwd.new_graph(*hg);
+    // const_lstm_rev.new_graph(*hg);
     cfsm->new_graph(*hg);
-    term_lstm.start_new_sequence();
-    stack_lstm.start_new_sequence();
+    // term_lstm.start_new_sequence();
+    // stack_lstm.start_new_sequence();
     action_lstm.start_new_sequence();
     // variables in the computation graph representing the parameters
     Expression pbias = parameter(*hg, p_pbias);
-    Expression S = parameter(*hg, p_S);
+    // Expression S = parameter(*hg, p_S);
     Expression A = parameter(*hg, p_A);
-    Expression T = parameter(*hg, p_T);
+    // Expression T = parameter(*hg, p_T);
     //Expression pbias2 = parameter(*hg, p_pbias2);
     //Expression S2 = parameter(*hg, p_S2);
     //Expression A2 = parameter(*hg, p_A2);
 
     //Expression ib = parameter(*hg, p_ib);
-    Expression cbias = parameter(*hg, p_cbias);
+    // Expression cbias = parameter(*hg, p_cbias);
     //Expression w2l = parameter(*hg, p_w2l);
     Expression p2a = parameter(*hg, p_p2a);
     Expression abias = parameter(*hg, p_abias);
@@ -695,12 +717,12 @@ vector<double> log_prob_parser_beam2(ComputationGraph* hg,
     action_lstm.add_input(action_start);
 
     vector<Expression> terms(1, lookup(*hg, p_w, kSOS));
-    term_lstm.add_input(terms.back());
+    // term_lstm.add_input(terms.back());
 
-    vector<Expression> stack;  // variables representing subtree embeddings
-    stack.push_back(parameter(*hg, p_stack_guard));
+    // vector<Expression> stack;  // variables representing subtree embeddings
+    // stack.push_back(parameter(*hg, p_stack_guard));
     // drive dummy symbol on stack through LSTM
-    stack_lstm.add_input(stack.back());
+    // stack_lstm.add_input(stack.back());
     vector<int> is_open_paren; // -1 if no nonterminal has a parenthesis open, otherwise index of NT
     is_open_paren.push_back(-1); // corresponds to dummy symbol
     string rootword;
@@ -709,15 +731,15 @@ vector<double> log_prob_parser_beam2(ComputationGraph* hg,
 
     ParserState* init = new ParserState();
 
-    init->stack_lstm = stack_lstm;
-    init->term_lstm = term_lstm;
+    // init->stack_lstm = stack_lstm;
+    // init->term_lstm = term_lstm;
     init->action_lstm = action_lstm;
-    init->const_lstm_fwd = const_lstm_fwd;
-    init->const_lstm_rev = const_lstm_rev;
+    // init->const_lstm_fwd = const_lstm_fwd;
+    // init->const_lstm_rev = const_lstm_rev;
     init->terms = terms;
     init->is_open_paren = is_open_paren;
     init->nt_count = 0;
-    init->stack = stack;
+    // init->stack = stack;
     init->stack_content = stack_content;
     init->results = results;
     // init.log_probs = log_probs;
@@ -735,7 +757,7 @@ vector<double> log_prob_parser_beam2(ComputationGraph* hg,
 
     vector<double> surprisals;
     vector<double> log_probs;
-
+    
     for (unsigned w_index = 0; w_index < sent.size(); ++w_index) {
       cerr << "Word index: " << w_index << " " << termdict.convert(sent.raw[w_index]) << "; thiswords size: " << pq_this.size() << endl;
       vector<ParserState*> pq_next;
@@ -743,23 +765,25 @@ vector<double> log_prob_parser_beam2(ComputationGraph* hg,
       while (pq_next.size() < beam_size){
         vector<ParserStateAction*> fringe;
         for (auto p_this : pq_this){
-          assert (p_this->stack.size() == p_this->stack_content.size());
+          // assert (p_this->stack.size() == p_this->stack_content.size());
+
           vector<unsigned> current_valid_actions;
           for (auto a: possible_actions) {
-            if (IsActionForbidden_Generative(adict.convert(a), p_this->prev_a, p_this->terms.size(), p_this->stack.size(), p_this->nopen_parens))
+            if (IsActionForbidden_Generative(adict.convert(a), p_this->prev_a, p_this->terms.size(), p_this->stack_content.size(), p_this->nopen_parens))
               continue;
             current_valid_actions.push_back(a);
-          }
+          }   
           // cerr << "valid action size = " << current_valid_actions.size() << endl;
-          Expression stack_summary = p_this->stack_lstm.back();
+          // Expression stack_summary = p_this->stack_lstm.back();
           Expression action_summary = p_this->action_lstm.back();
-          Expression term_summary = p_this->term_lstm.back();
+          // Expression term_summary = p_this->term_lstm.back();
           if (apply_dropout) {
-            stack_summary = dropout(stack_summary, DROPOUT);
+            // stack_summary = dropout(stack_summary, DROPOUT);
             action_summary = dropout(action_summary, DROPOUT);
-            term_summary = dropout(term_summary, DROPOUT);
+            // term_summary = dropout(term_summary, DROPOUT);
           }
-          Expression p_t = affine_transform({pbias, S, stack_summary, A, action_summary, T, term_summary});
+          // Expression p_t = affine_transform({pbias, S, stack_summary, A, action_summary, T, term_summary});
+          Expression p_t = affine_transform({pbias, A, action_summary});
           Expression nlp_t = rectify(p_t);
           Expression r_t = affine_transform({abias, p2a, nlp_t});
 
@@ -773,9 +797,9 @@ vector<double> log_prob_parser_beam2(ComputationGraph* hg,
 	    unsigned wordid = 0;
 	    // assert(termc < sent.size());
 	    wordid = sent.raw[w_index];
-	    if (a_char == 'S')
+	    if (a_char == 'S') 
 	      new_score += as_scalar((-cfsm->neg_log_softmax(nlp_t, wordid)).value());
-
+	    
 	    ParserStateAction* p_state_action = new ParserStateAction(p_this, action, a_char, wordid, new_score,  fringe.size());
 	    fringe.push_back(p_state_action);
 	  }// all current actions
@@ -790,12 +814,12 @@ vector<double> log_prob_parser_beam2(ComputationGraph* hg,
 	vector<ParserState*> pq_this_new;
         for(int k = fringe.size()-1; k >= 0; k--){
           if(k >= cut){
-	    ParserState* newstate = fringe[k]->applyAction(hg, cbias, cW, p_a, p_w, p_nt, p_ntup, apply_dropout);
+	    ParserState* newstate = fringe[k]->applyAction(hg, cW, p_a, p_w, apply_dropout);
             if(fringe[k]->a_char == 'S'){
               pq_next.push_back(newstate);
             }else if (fringe[k]->a_char == 'R'){
               int i = newstate->is_open_paren.size() - 1; //get the last thing on the stack
-              while(newstate->is_open_paren[i] < 0) { --i; }
+              while(newstate->is_open_paren[i] < 0) { --i; } 
               if(i>=0){
                 pq_this_new.push_back(newstate);
               }else{
@@ -803,15 +827,15 @@ vector<double> log_prob_parser_beam2(ComputationGraph* hg,
               }
             }else{
               pq_this_new.push_back(newstate);
-            }
+            }            
           }else{
             if(fringe[k]->a_char == 'S' && fast_track_count < fast_track_size){
-	      ParserState* newstate = fringe[k]->applyAction(hg, cbias, cW, p_a, p_w, p_nt, p_ntup, apply_dropout);
+	      ParserState* newstate = fringe[k]->applyAction(hg, cW, p_a, p_w, apply_dropout);
               pq_next.push_back(newstate);
               fast_track_count += 1;
             }else{
 	      // don't need to do anything, fringe is local
-              // need_to_delete_psa.insert(fringe[k]);
+              // need_to_delete_psa.insert(fringe[k]); 
             }
           }
         }
@@ -857,14 +881,14 @@ vector<double> log_prob_parser_beam2(ComputationGraph* hg,
           if (a[0] == 'N') {
             int nt = action2NTindex[action];
             cerr << " (" << ntermdict.convert(nt);
-          }
+          }     
           if (a[0] == 'S'){
             cerr << " " << termdict.convert(sent.raw[shift_count]);
-            shift_count++;
+            shift_count++; 
           }
         }
-        cerr << "\n";
-      }
+        cerr << "\n";    
+      }      
 
       cerr << "delete " << pq_this.size() << " ParserState pointers in thiswords." << endl;
       for (ParserState* ps: pq_this) {delete ps;}
@@ -908,6 +932,7 @@ vector<double> log_prob_parser_beam2(ComputationGraph* hg,
     return surprisals;
 }
 
+
 };
 
 void signal_callback_handler(int /* signum */) {
@@ -922,7 +947,7 @@ void signal_callback_handler(int /* signum */) {
 int main(int argc, char** argv) {
   dynet::initialize(argc, argv);
 
-  cerr << "COMMAND LINE:";
+  cerr << "COMMAND LINE:"; 
   for (unsigned i = 0; i < static_cast<unsigned>(argc); ++i) cerr << ' ' << argv[i];
   cerr << endl;
   unsigned status_every_i_iterations = 100;
@@ -944,7 +969,6 @@ int main(int argc, char** argv) {
   BEAM_SIZE = conf["beam_size"].as<unsigned>();
   FASTTRACK_BEAM_SIZE = conf["fasttrack_beam_size"].as<unsigned>();
   WORD_BEAM_SIZE = conf["word_beam_size"].as<unsigned>();
-
   if (conf.count("train") && conf.count("dev_data") == 0) {
     cerr << "You specified --train but did not specify --dev_data FILE\n";
     return 1;
@@ -995,7 +1019,7 @@ int main(int argc, char** argv) {
   if (conf.count("eval_data")) {
     cerr << "Loading evaluation set\n";
     eval_corpus.load_raw_sent(conf["eval_data"].as<string>());
-  }
+  }  
 
   for (unsigned i = 0; i < adict.size(); ++i) {
     const string& a = adict.convert(i);
@@ -1047,7 +1071,7 @@ int main(int argc, char** argv) {
     bool first = true;
     int iter = -1;
     double best_dev_llh = 9e99;
-    //cerr << "TRAINING STARTED AT: " << put_time(localtime(&time_start), "%c %Z") << endl;
+    // cerr << "TRAINING STARTED AT: " << put_time(localtime(&time_start), "%c %Z") << endl;
     while(!requested_stop) {
       ++iter;
       auto time_start = chrono::system_clock::now();
@@ -1069,8 +1093,9 @@ int main(int argc, char** argv) {
 	   const vector<int>& actions=corpus.actions[order[si]];
            ComputationGraph hg;
            Expression tot_neglogprob;
-           parser.log_prob_parser(&hg,tot_neglogprob,sentence,actions,&right,false);
 
+           parser.log_prob_parser(&hg,tot_neglogprob,sentence,actions,&right,false);
+           
            double lp = as_scalar(hg.incremental_forward(tot_neglogprob));
            if (lp < 0) {
              cerr << "Log prob < 0 on sentence " << order[si] << ": lp=" << lp << endl;
@@ -1146,9 +1171,9 @@ int main(int argc, char** argv) {
           // easier to refer to it in a shell script.
           if (!softlinkCreated) {
             string softlink = " latest_model";
-            if (system((string("rm -f ") + softlink).c_str()) == 0 &&
+            if (system((string("rm -f ") + softlink).c_str()) == 0 && 
                 system((string("ln -s ") + fname + softlink).c_str()) == 0) {
-              cerr << "Created " << softlink << " as a soft link to " << fname
+              cerr << "Created " << softlink << " as a soft link to " << fname 
                    << " for convenience." << endl;
             }
             softlinkCreated = true;
@@ -1197,18 +1222,15 @@ int main(int argc, char** argv) {
       f_name = "./surprisals_"+conf["eval_data"].as<string>()+".txt";
     }
     f.open(f_name);
-
-    // output header
-    f << "sentence_id\ttoken_id\ttoken\tsurprisal\n";
-
     for (unsigned sii = 0; sii < eval_size; ++sii) {
       const auto& sentence=eval_corpus.sents[sii];
       ComputationGraph hg;
       vector<double> surprisals;
       surprisals = parser.log_prob_parser_beam2(&hg, sentence, &right, BEAM_SIZE, FASTTRACK_BEAM_SIZE, WORD_BEAM_SIZE, false);
-      for(unsigned k = 0; k < surprisals.size(); ++k) {
-        f << (sii + 1) << "\t" << (k + 1) << "\t" << termdict.convert(sentence.raw[k]) << "\t" << surprisals[k] << "\n";
+      for(unsigned k = 0; k < surprisals.size(); ++k){
+        f << termdict.convert(sentence.raw[k]) << "\t" << surprisals[k] <<"\n";
       }
+      f << "<eos>\t0.0\n";
       f.flush();
     }
     f.close();
