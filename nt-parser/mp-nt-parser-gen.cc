@@ -460,6 +460,400 @@ vector<unsigned> log_prob_parser(ComputationGraph* hg,
     return results;
   }
 
+struct ParserState {
+  LSTMBuilder stack_lstm;
+  LSTMBuilder term_lstm;
+  LSTMBuilder action_lstm;
+  LSTMBuilder const_lstm_fwd;
+  LSTMBuilder const_lstm_rev;
+
+  vector<Expression> terms;
+  vector<int> is_open_paren;
+  unsigned nt_count;
+
+  vector<Expression> stack;
+  vector<string> stack_content;
+  vector<unsigned> results;  // sequence of predicted actions
+  // bool complete;
+  // vector<Expression> log_probs;
+  double score;
+  int nopen_parens;
+  char prev_a;
+  unsigned fringe_index;
+  double log_posterior_parse;
+  double log_prob_additional_parse;
+};
+
+struct ParserStateCompare {
+  bool operator()(const ParserState* a, const ParserState* b) const {
+    return a->score > b->score;
+  }
+};
+
+static void prune(vector<ParserState*>& pq, unsigned k) {
+  if (pq.size() == 1) return;
+  if (k > pq.size()) k = pq.size();
+  partial_sort(pq.begin(), pq.begin() + k, pq.end(), ParserStateCompare());
+  pq.resize(k);
+  reverse(pq.begin(), pq.end());
+  //cerr << "PRUNE\n";
+  //for (unsigned i = 0; i < pq.size(); ++i) {
+  //  cerr << pq[i].score << endl;
+  //}
+}
+
+vector<double> log_prob_parser_beam(ComputationGraph* hg,
+                     const parser::Sentence& sent,
+                     double *right,
+                     unsigned beam_size,
+                     unsigned fast_track_size,
+                     bool is_evaluation) {
+    vector<unsigned> results;
+    vector<string> stack_content;
+    stack_content.push_back("ROOT_GUARD");
+    const bool sample = sent.size() == 0;
+    const bool build_training_graph = true;
+    assert(sample || build_training_graph);
+    bool apply_dropout = (DROPOUT && !is_evaluation);
+    if (sample) apply_dropout = false;
+
+    if (apply_dropout) {
+      stack_lstm.set_dropout(DROPOUT);
+      term_lstm.set_dropout(DROPOUT);
+      action_lstm.set_dropout(DROPOUT);
+      const_lstm_fwd.set_dropout(DROPOUT);
+      const_lstm_rev.set_dropout(DROPOUT);
+    } else {
+      stack_lstm.disable_dropout();
+      term_lstm.disable_dropout();
+      action_lstm.disable_dropout();
+      const_lstm_fwd.disable_dropout();
+      const_lstm_rev.disable_dropout();
+    }
+    term_lstm.new_graph(*hg);
+    stack_lstm.new_graph(*hg);
+    action_lstm.new_graph(*hg);
+    const_lstm_fwd.new_graph(*hg);
+    const_lstm_rev.new_graph(*hg);
+    cfsm->new_graph(*hg);
+    term_lstm.start_new_sequence();
+    stack_lstm.start_new_sequence();
+    action_lstm.start_new_sequence();
+    // variables in the computation graph representing the parameters
+    Expression pbias = parameter(*hg, p_pbias);
+    Expression S = parameter(*hg, p_S);
+    Expression A = parameter(*hg, p_A);
+    Expression T = parameter(*hg, p_T);
+    //Expression pbias2 = parameter(*hg, p_pbias2);
+    //Expression S2 = parameter(*hg, p_S2);
+    //Expression A2 = parameter(*hg, p_A2);
+
+    //Expression ib = parameter(*hg, p_ib);
+    Expression cbias = parameter(*hg, p_cbias);
+    //Expression w2l = parameter(*hg, p_w2l);
+    Expression p2a = parameter(*hg, p_p2a);
+    Expression abias = parameter(*hg, p_abias);
+    Expression action_start = parameter(*hg, p_action_start);
+    Expression cW = parameter(*hg, p_cW);
+
+    action_lstm.add_input(action_start);
+
+    vector<Expression> terms(1, lookup(*hg, p_w, kSOS));
+    term_lstm.add_input(terms.back());
+
+    vector<Expression> stack;  // variables representing subtree embeddings
+    stack.push_back(parameter(*hg, p_stack_guard));
+    // drive dummy symbol on stack through LSTM
+    stack_lstm.add_input(stack.back());
+    vector<int> is_open_paren; // -1 if no nonterminal has a parenthesis open, otherwise index of NT
+    is_open_paren.push_back(-1); // corresponds to dummy symbol
+    string rootword;
+    int nopen_parens = 0;
+    char prev_a = '0';
+
+    ParserState* init = new ParserState();
+
+    init->stack_lstm = stack_lstm;
+    init->term_lstm = term_lstm;
+    init->action_lstm = action_lstm;
+    init->const_lstm_fwd = const_lstm_fwd;
+    init->const_lstm_rev = const_lstm_rev;
+    init->terms = terms;
+    init->is_open_paren = is_open_paren;
+    init->nt_count = 0;
+    init->stack = stack;
+    init->stack_content = stack_content;
+    init->results = results;
+    // init.log_probs = log_probs;
+    init->score = 0;
+    init->nopen_parens = nopen_parens;
+    init->prev_a = prev_a;
+    init->fringe_index = 0;
+
+    init->log_posterior_parse = 0;
+    init->log_prob_additional_parse = 0;
+
+    vector<ParserState*> pq_this;
+    pq_this.push_back(init);
+    unordered_set<ParserState*> need_to_delete;
+
+    vector<double> surprisals;
+
+    for (unsigned w_index = 0; w_index < sent.size(); ++w_index) {
+      cerr << "Word index: " << w_index << " " << termdict.convert(sent.raw[w_index]) << "; thiswords size: " << pq_this.size() << endl;
+      vector<ParserState*> pq_next;
+
+      while (pq_next.size() < beam_size){
+        vector<ParserState*> fringe;
+        for (auto p_this : pq_this){
+          assert (p_this->stack.size() == p_this->stack_content.size());
+          vector<unsigned> current_valid_actions;
+          for (auto a: possible_actions) {
+            if (IsActionForbidden_Generative(adict.convert(a), p_this->prev_a, p_this->terms.size(), p_this->stack.size(), p_this->nopen_parens))
+              continue;
+            current_valid_actions.push_back(a);
+          }   
+          // cerr << "valid action size = " << current_valid_actions.size() << endl;
+          Expression stack_summary = p_this->stack_lstm.back();
+          Expression action_summary = p_this->action_lstm.back();
+          Expression term_summary = p_this->term_lstm.back();
+          if (apply_dropout) {
+            stack_summary = dropout(stack_summary, DROPOUT);
+            action_summary = dropout(action_summary, DROPOUT);
+            term_summary = dropout(term_summary, DROPOUT);
+          }
+          Expression p_t = affine_transform({pbias, S, stack_summary, A, action_summary, T, term_summary});
+          Expression nlp_t = rectify(p_t);
+          Expression r_t = affine_transform({abias, p2a, nlp_t});
+
+          Expression adiste = log_softmax(r_t, current_valid_actions);
+
+
+          for(auto action : current_valid_actions){
+            ParserState* p_state = new ParserState();
+            *p_state = *p_this;
+            p_state->fringe_index = fringe.size();
+            const string& a_string = adict.convert(action);
+            p_state->prev_a = a_string[0];
+            p_state->score += as_scalar(pick(adiste, action).value());
+            p_state->log_prob_additional_parse += as_scalar(pick(adiste, action).value());
+            p_state->results.push_back(action);
+
+            // add current action to action LSTM
+            Expression actione = lookup(*hg, p_a, action);
+            p_state->action_lstm.add_input(actione);
+
+            // do action
+            if (a_string[0] == 'N'){
+              ++p_state->nopen_parens;
+              auto it = action2NTindex.find(action);
+              assert(it != action2NTindex.end());
+              int nt_index = it->second;
+              p_state->nt_count++;
+              p_state->stack_content.push_back(ntermdict.convert(nt_index));
+              Expression nt_embedding = lookup(*hg, p_nt, nt_index);
+              p_state->stack.push_back(nt_embedding);
+              p_state->stack_lstm.add_input(nt_embedding);
+              p_state->is_open_paren.push_back(nt_index);
+            }else if (a_string[0] == 'R'){
+              --p_state->nopen_parens;
+              assert(p_state->stack.size() > 2); // dummy symbol means > 2 (not >= 2)
+              assert(p_state->stack_content.size() > 2 && p_state->stack.size() == p_state->stack_content.size());
+              // find what paren we are closing
+              int i = p_state->is_open_paren.size() - 1; //get the last thing on the stack
+              while(p_state->is_open_paren[i] < 0) { --i; assert(i >= 0); } //iteratively decide whether or not it's a non-terminal
+              Expression nonterminal = lookup(*hg, p_ntup, p_state->is_open_paren[i]);
+              int nchildren = p_state->is_open_paren.size() - i - 1;
+              assert(nchildren > 0);
+              //cerr << "  number of children to reduce: " << nchildren << endl;
+              vector<Expression> children(nchildren);
+              p_state->const_lstm_fwd.start_new_sequence();
+              p_state->const_lstm_rev.start_new_sequence();
+
+              // REMOVE EVERYTHING FROM THE STACK THAT IS GOING
+              // TO BE COMPOSED INTO A TREE EMBEDDING
+              string curr_word;
+              // cerr << "--------------------------------" << endl;
+              // cerr << "Now printing the children" << endl;
+              // cerr << "--------------------------------" << endl;
+              for (i = 0; i < nchildren; ++i) {
+                assert (p_state->stack_content.size() == p_state->stack.size());
+                children[i] = p_state->stack.back();
+                p_state->stack.pop_back();
+                p_state->stack_lstm.rewind_one_step();
+                p_state->is_open_paren.pop_back();
+                curr_word = p_state->stack_content.back();
+                // cerr << "At the back of the stack (supposed to be one of the children): " << curr_word << endl;
+                p_state->stack_content.pop_back();
+              }
+              assert (p_state->stack_content.size() == p_state->stack.size());
+
+              // cerr << "Doing REDUCE operation" << endl;
+
+              p_state->is_open_paren.pop_back(); // nt symbol
+              p_state->stack.pop_back(); // nonterminal dummy
+              p_state->stack_lstm.rewind_one_step(); // nt symbol
+              curr_word = p_state->stack_content.back();
+              //cerr << "--------------------------------" << endl;
+              //cerr << "At the back of the stack (supposed to be the non-terminal symbol) : " << curr_word << endl;
+              p_state->stack_content.pop_back();
+              assert (p_state->stack.size() == p_state->stack_content.size());
+              // cerr << "Done reducing" << endl;
+
+              // BUILD TREE EMBEDDING USING BIDIR LSTM
+              p_state->const_lstm_fwd.add_input(nonterminal);
+              p_state->const_lstm_rev.add_input(nonterminal);
+
+              for (i = 0; i < nchildren; ++i) {
+                p_state->const_lstm_fwd.add_input(children[i]);
+                p_state->const_lstm_rev.add_input(children[nchildren - i - 1]);
+              }
+              Expression cfwd = p_state->const_lstm_fwd.back();
+              Expression crev = p_state->const_lstm_rev.back();
+              if (apply_dropout) {
+                cfwd = dropout(cfwd, DROPOUT);
+                crev = dropout(crev, DROPOUT);
+              }
+              Expression c = concatenate({cfwd, crev});
+              Expression composed = rectify(affine_transform({cbias, cW, c}));
+              p_state->stack_lstm.add_input(composed);
+              p_state->stack.push_back(composed);
+              p_state->stack_content.push_back(curr_word);
+              p_state->is_open_paren.push_back(-1); // we just closed a paren at this position            
+            }else { // SHIFT
+              unsigned wordid = 0;
+              // assert(termc < sent.size());
+              wordid = sent.raw[w_index];
+              p_state->score += as_scalar((-cfsm->neg_log_softmax(nlp_t, wordid)).value());
+              p_state->log_prob_additional_parse += as_scalar((-cfsm->neg_log_softmax(nlp_t, wordid)).value());
+              assert (wordid != 0);
+              p_state->stack_content.push_back(termdict.convert(wordid)); //add the string of the word to the stack
+              // ++termc;
+              Expression word = lookup(*hg, p_w, wordid);
+              p_state->terms.push_back(word);
+              p_state->term_lstm.add_input(word);
+              p_state->stack.push_back(word);
+              p_state->stack_lstm.add_input(word);
+              p_state->is_open_paren.push_back(-1);        
+            }
+            fringe.push_back(p_state);
+          } // all current actions  
+        } // iterate all parser states in thiswords
+
+        cerr << "fringe size is " << fringe.size() << endl;
+        cerr << "delete " << pq_this.size() << " ParserState pointers in thiswords." << endl;
+        for (ParserState* ps: pq_this) {delete ps;}
+        pq_this.clear();
+        pq_this.shrink_to_fit();
+
+        // sort all parser states in the fringe
+        prune(fringe, fringe.size());
+        unsigned fast_track_count = 0;
+        int cut = max<int>((int)fringe.size()-beam_size, 0);
+
+        for(int k = fringe.size()-1; k >= 0; k--){
+          if(k >= cut){
+            if(fringe[k]->prev_a == 'S'){
+              pq_next.push_back(fringe[k]);
+            }else if (fringe[k]->prev_a == 'R'){
+              int i = fringe[k]->is_open_paren.size() - 1; //get the last thing on the stack
+              while(fringe[k]->is_open_paren[i] < 0) { --i; } 
+              if(i>=0){
+                pq_this.push_back(fringe[k]);
+              }else{
+                need_to_delete.insert(fringe[k]);
+              }
+            }else{
+              pq_this.push_back(fringe[k]);
+            }            
+          }else{
+            if(fringe[k]->prev_a == 'S' && fast_track_count < fast_track_size){
+              pq_next.push_back(fringe[k]);
+              fast_track_count += 1;
+            }else{
+              need_to_delete.insert(fringe[k]);
+            }
+          }
+        }
+
+        int delcount = 0;
+        for (ParserState* ps: need_to_delete) {delete ps; delcount++;}
+        need_to_delete.clear();
+        cerr << "delete " << delcount << " in fringe, add " << pq_this.size() << " from fringe to thiswords, nextwords size is " << pq_next.size() << endl;
+      }
+
+      // compute surprisal of word sent[w_index] given previous words
+      double w_prob = 0;
+      for (auto parser_state : pq_next){
+        need_to_delete.insert(parser_state);
+        w_prob += exp(parser_state->log_prob_additional_parse + parser_state->log_posterior_parse);
+        // cerr << parser_state->log_prob_additional_parse << " " << parser_state->log_posterior_parse << " " << log(exp(parser_state->log_prob_additional_parse + parser_state->log_posterior_parse)) << " " << w_prob << endl;
+      }
+      double w_surprisal = -log(w_prob);
+      surprisals.push_back(w_surprisal);
+
+      prune(pq_next, pq_next.size());
+
+      cerr << "list of partial parses:" << endl;
+      unsigned beam_index = 1;
+      for(auto parser_state : pq_next){
+        cerr << beam_index << " " << parser_state->score << " ";
+        beam_index++;
+        unsigned shift_count = 0;
+        for (auto action : parser_state->results){
+          const string& a = adict.convert(action);
+          if (a[0] == 'R') cerr << ")";
+          if (a[0] == 'N') {
+            int nt = action2NTindex[action];
+            cerr << " (" << ntermdict.convert(nt);
+          }     
+          if (a[0] == 'S'){
+            cerr << " " << termdict.convert(sent.raw[shift_count]);
+            shift_count++; 
+          }
+        }
+        cerr << "\n";    
+      }      
+
+      cerr << "delete " << pq_this.size() << " ParserState pointers in thiswords." << endl;
+      for (ParserState* ps: pq_this) {delete ps;}
+      pq_this.clear();
+      pq_this.shrink_to_fit();
+
+      prune(pq_next, beam_size/10);
+
+      double normalization_term = 0;
+      for (auto ps : pq_next){
+        normalization_term += exp(ps->score);
+      }
+      // update the posterior over partial parses given the previous words sent[:(w_index-1)]
+      for (auto ps : pq_next){
+        ParserState* p_new = new ParserState();
+        *p_new = *ps;
+        p_new->log_posterior_parse = log(exp(p_new->score)/normalization_term);
+        p_new->log_prob_additional_parse = 0;
+        pq_this.push_back(p_new);
+        // cerr << "norm term: " << normalization_term << " " << exp(p_new->score) << " " << p_new->log_posterior_parse << endl ;
+      }
+
+      int delcount = 0;
+      for (ParserState* ps: need_to_delete) {delete ps; delcount++;}
+      cerr << "delete " << delcount << " ParserState pointers." << endl;
+      need_to_delete.clear();
+    }
+
+    for (unsigned k = 0; k < surprisals.size(); k++){
+      cerr << termdict.convert(sent.raw[k])  << "\t\t" << surprisals[k] << endl;
+    }
+
+    for (ParserState* ps: pq_this) {delete ps;}
+    pq_this.clear();
+
+    return surprisals;
+}
+
+};
+
 
 class Learner : public ILearner<Datum, dynet::real> {
 public:
