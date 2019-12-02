@@ -54,6 +54,7 @@ unsigned ACTION_SIZE = 0;
 unsigned VOCAB_SIZE = 0;
 unsigned NT_SIZE = 0;
 float DROPOUT = 0.0f;
+float LEARNING_RATE = 0.1;
 std::map<int,int> action2NTindex;  // pass in index of action NT(X), return index of X
 
 using namespace dynet;
@@ -90,6 +91,7 @@ void InitCommandLine(int argc, char** argv, po::variables_map* conf) {
         ("beam_size", po::value<unsigned>()->default_value(100), "beam size")
         ("fasttrack_beam_size", po::value<unsigned>()->default_value(5), "fast track beam size")
         ("word_beam_size", po::value<unsigned>()->default_value(10), "word beam size")
+        ("lr", po::value<float>()->default_value(0.1), "Learning rate")  
         ("help,h", "Help");
   po::options_description dcmdline_options;
   dcmdline_options.add(opts);
@@ -944,6 +946,7 @@ int main(int argc, char** argv) {
   BEAM_SIZE = conf["beam_size"].as<unsigned>();
   FASTTRACK_BEAM_SIZE = conf["fasttrack_beam_size"].as<unsigned>();
   WORD_BEAM_SIZE = conf["word_beam_size"].as<unsigned>();
+  LEARNING_RATE = conf["lr"].as<float>();
 
   if (conf.count("train") && conf.count("dev_data") == 0) {
     cerr << "You specified --train but did not specify --dev_data FILE\n";
@@ -1026,7 +1029,7 @@ int main(int argc, char** argv) {
   if (conf.count("train")) {
     signal(SIGINT, signal_callback_handler);
     //AdamTrainer sgd(&model);
-    SimpleSGDTrainer sgd(model, 0.1);
+    SimpleSGDTrainer sgd(model, LEARNING_RATE);
     //sgd.eta = 0.01;
     //sgd.eta0 = 0.01;
     //MomentumSGDTrainer sgd(&model);
@@ -1057,11 +1060,11 @@ int main(int argc, char** argv) {
              if (first) { first = false; } else {
                   sgd.update_epoch();
                   //sgd.eta /= 2;
+                  sgd.learning_rate /= (1 + eta_decay);
               }
              //cerr << "NO SHUFFLE" << endl;
              cerr << "**SHUFFLE\n";
              random_shuffle(order.begin(), order.end());
-             sgd.learning_rate /= (1 + eta_decay);
              //sgd.eta /= 2;
            }
            tot_seen += 1;
