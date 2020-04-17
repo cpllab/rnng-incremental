@@ -47,5 +47,5 @@ if __name__ == '__main__':
     words_list = get_dict(lines) 
     #print 'number of words', len(words_list)
     for word in words_list:
-        print word
+        print(word)
     input_file.close() 
