@@ -1,3 +1,6 @@
+#!/usr/bin/env python
+# coding: utf-8
+
 from argparse import ArgumentParser
 import os.path
 import pickle
@@ -200,7 +203,7 @@ def main(args):
 
         tokens = line.strip().split()
         unkified = unkify(tokens, words_list)
-        print ' '.join(unkified)
+        print(' '.join(unkified))
         # output_actions = get_actions(line)
         # for action in output_actions:
         #     print action
@@ -216,7 +219,7 @@ if __name__ == "__main__":
     args = p.parse_args()
 
     if args.train_file is None and args.vocab_file is None:
-        print "One of --train_file, --vocab_file is required."
+        print("One of --train_file, --vocab_file is required.")
         sys.exit(1)
 
     main(args)
