@@ -2,7 +2,7 @@ project(dynet)
 cmake_minimum_required(VERSION 2.8 FATAL_ERROR)
 
 set(CMAKE_MODULE_PATH ${PROJECT_SOURCE_DIR}/cmake)
-set(CMAKE_CXX_FLAGS "-Wall -std=c++11 -O3 -g")
+set(CMAKE_CXX_FLAGS "-std=c++11 -O3 -g")
 
 enable_testing()
 
