@@ -1,4 +1,8 @@
-# Recurrent Neural Network Grammars
+# Word-synchronous Beam Search with Fast-tracking for Recurrent Neural Network Grammars
+
+This repository implements word-synchronous beam search with fast-tracking (Stern et al. 2017; Hale et al., 2018) for recurrent neural network grammars (Dyer et al., 2016).
+
+Please refers to the original [RNNG](https://github.com/clab/rnng) for the instructions on model training and evaluation. Notice that `--cnn-mem` will need to be changed to `--dynet-mem` in order to work for the code here, as we uses [Dynet](https://github.com/clab/dynet). 
 
 ### Unkify input sentences: 
 
