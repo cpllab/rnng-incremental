@@ -14,6 +14,10 @@ Please refers to the original [RNNG](https://github.com/clab/rnng) repository fo
 
 This will write the surprisal values to path/to/surprisals_output.
 
+### Acknowledgement
+
+We thank Miguel Ballesteros, Hui Wan, and Roger Levy for help with the implementation.
+
 ### References
 
 [1] Dyer, C., Kuncoro, A., Ballesteros, M., & Smith, N. A. (2016). Recurrent Neural Network Grammars. In Proceedings of NAACL-HLT.
