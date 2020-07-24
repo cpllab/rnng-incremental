@@ -1,3 +1,11 @@
+# This file has been modified by Peng.
+#
+# The original return 'word_list' of the function get_dict() has been changed to 'set(word_list)'
+# to improve the code performance at scale, as the returned value is used by the function unkify()
+# in the scripts get_oracle.py and get_oracle_gen.py for checking whether a terminal token is in the 
+# vocabulary.
+
+
 def is_next_open_bracket(line, start_idx):
     for char in line[(start_idx + 1):]:
         if char == '(':
@@ -39,7 +47,7 @@ def get_dict(lines):
     for item in words_dict:
         if words_dict[item] > 1:
             words_list.append(item) 
-    return words_list 
+    return set(words_list) # change the list type to a set to improve the performance
 
 if __name__ == '__main__':
     input_file = open('train.02-21', 'r')
