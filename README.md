@@ -2,7 +2,15 @@
 
 This repository implements word-synchronous beam search with fast-tracking (Stern et al. 2017; Hale et al., 2018) for Recurrent Neural Network Grammars (Dyer et al., 2016).
 
+## Set up the repository
+
+Please download the latest version of [Dynet](https://github.com/clab/dynet) and put it in the root folder of this repository.
+
+## Model training and evaluation
+
 Please refers to the original [RNNG](https://github.com/clab/rnng) repository for instructions on model training and evaluation. Notice that since the code here uses [Dynet](https://github.com/clab/dynet), the flag `--cnn-mem` in the commands will need to be changed to `--dynet-mem`.
+
+## Estimate word surprisals
 
 ### Unkify input sentences: 
 
