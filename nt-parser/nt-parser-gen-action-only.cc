@@ -812,7 +812,7 @@ vector<double> log_prob_parser_beam2(ComputationGraph* hg,
 	  }// all current actions
 	} // iterate all parser states in thiswords --  for (auto p_this : pq_this){
 
-        cerr << "fringe size is " << fringe.size() << endl;
+        // cerr << "fringe size is " << fringe.size() << endl;
         // sort all parser states in the fringe
         prune(fringe, fringe.size());
         unsigned fast_track_count = 0;
@@ -847,12 +847,12 @@ vector<double> log_prob_parser_beam2(ComputationGraph* hg,
           }
         }
 
-	cerr << "delete " << fringe.size() << " ParserStateAction pointers in fringe." << endl;
+	// cerr << "delete " << fringe.size() << " ParserStateAction pointers in fringe." << endl;
         for (ParserStateAction* psa: fringe) {delete psa;}
         fringe.clear();
         fringe.shrink_to_fit();
 
-	cerr << "delete " << pq_this.size() << " ParserState pointers in thiswords." << endl;
+	// cerr << "delete " << pq_this.size() << " ParserState pointers in thiswords." << endl;
         for (ParserState* ps: pq_this) {delete ps;}
         pq_this.clear();
         pq_this.shrink_to_fit();
@@ -865,7 +865,7 @@ vector<double> log_prob_parser_beam2(ComputationGraph* hg,
         int delcount = 0;
         for (ParserState* ps: need_to_delete) {delete ps; delcount++;}
         need_to_delete.clear();
-        cerr << "delete " << delcount << " instantiated in fringe, add " << pq_this.size() << " from fringe to thiswords, nextwords size is " << pq_next.size() << endl;
+        // cerr << "delete " << delcount << " instantiated in fringe, add " << pq_this.size() << " from fringe to thiswords, nextwords size is " << pq_next.size() << endl;
 
       } // while (pq_next.size() < beam_size){
 
@@ -897,7 +897,7 @@ vector<double> log_prob_parser_beam2(ComputationGraph* hg,
         cerr << "\n";    
       }      
 
-      cerr << "delete " << pq_this.size() << " ParserState pointers in thiswords." << endl;
+      // cerr << "delete " << pq_this.size() << " ParserState pointers in thiswords." << endl;
       for (ParserState* ps: pq_this) {delete ps;}
       pq_this.clear();
       pq_this.shrink_to_fit();
@@ -916,7 +916,7 @@ vector<double> log_prob_parser_beam2(ComputationGraph* hg,
 
       int delcount = 0;
       for (ParserState* ps: need_to_delete) {delete ps; delcount++;}
-      cerr << "delete " << delcount << " ParserState pointers." << endl;
+      // cerr << "delete " << delcount << " ParserState pointers." << endl;
       need_to_delete.clear();
     }
 
