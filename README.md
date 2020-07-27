@@ -1,6 +1,6 @@
 # Word-synchronous Beam Search with Fast-tracking for Recurrent Neural Network Grammars
 
-This repository implements word-synchronous beam search with fast-tracking (Stern et al. 2017; Hale et al., 2018) for Recurrent Neural Network Grammars (Dyer et al., 2016). 
+This repository implements word-synchronous beam search with fast-tracking (Stern et al. 2017; Hale et al., 2018) for Recurrent Neural Network Grammars (Dyer et al., 2016), as well as an ablated RNNG model referred as "ActionLSTM" in Wilcox et al. (2019). The ablated model is implemented in `nt-parser/nt-parser-gen-action-only.cc`,  which only uses the encoder of the action sequence, similar to Choe and Charniak (2016).
 
 ## Set up the repository
 
@@ -32,8 +32,12 @@ We thank Miguel Ballesteros, Hui Wan, and Roger Levy for the help and advice wit
 
 ## References
 
-[1] Dyer, C., Kuncoro, A., Ballesteros, M., & Smith, N. A. (2016). Recurrent Neural Network Grammars. In Proceedings of NAACL-HLT.
+[1] Choe, D., & Charniak, E. (2016). Parsing as Language Modeling. In Proceedings of the 2016 Conference on Empirical Methods in Natural Language Processing.
 
-[2] Stern, M., Fried, D., & Klein, D. (2017). Effective Inference for Generative Neural Parsing. In Proceedings of the 2017 Conference on Empirical Methods in Natural Language Processing.
+[2] Dyer, C., Kuncoro, A., Ballesteros, M., & Smith, N. A. (2016, June). Recurrent Neural Network Grammars. In Proceedings of the 2016 Conference of the North American Chapter of the Association for Computational Linguistics: Human Language Technologies.
 
 [3] Hale, J., Dyer, C., Kuncoro, A., & Brennan, J. (2018). Finding Syntax in Human Encephalography with Beam Search. In Proceedings of the 56th Annual Meeting of the Association for Computational Linguistics (Volume 1: Long Papers).
+
+[4] Stern, M., Fried, D., & Klein, D. (2017). Effective Inference for Generative Neural Parsing. In Proceedings of the 2017 Conference on Empirical Methods in Natural Language Processing.
+
+[5] Wilcox, E., Qian, P., Futrell, R., Ballesteros, M., & Levy, R. (2019, June). Structural Supervision Improves Learning of Non-Local Grammatical Dependencies. In Proceedings of the 2019 Conference of the North American Chapter of the Association for Computational Linguistics: Human Language Technologies, Volume 1 (Long and Short Papers).
