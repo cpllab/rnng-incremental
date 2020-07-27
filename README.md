@@ -12,13 +12,17 @@ Please refers to the original [RNNG](https://github.com/clab/rnng) repository fo
 
 ## Estimate word surprisals
 
+### Prepare the vocabulary file:
+
+    python get_dictionary.py train.02-21 > train_vocab.txt
+
 ### Unkify input sentences: 
 
-    python get_raw.py train.02-21 eval_file.txt > unkified_eval_file.txt
+    python get_unkified_input.py train_vocab.txt eval_file.txt > unkified_eval_file.txt
 
 ### Get word surprisal values:
 
-    build/nt-parser/nt-parser-gen --dynet-mem 2000  -x -T train_gen.oracle -v path/to/unkified_eval_file -f path/to/surprisals_output --clusters clusters-train-berk.txt --input_dim 256 --lstm_input_dim 256 --hidden_dim 256 -m model_params_file
+    build/nt-parser/nt-parser-gen --dynet-mem 2000  -x -T train_gen.oracle -v path/to/unkified_eval_file -f path/to/surprisals_output --clusters path/to/clusters-train-berk.txt --input_dim 256 --lstm_input_dim 256 --hidden_dim 256 -m model_params_file
 
 This will write the surprisal values to path/to/surprisals_output.
 
