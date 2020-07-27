@@ -20,7 +20,7 @@ Assuming a list of tokenized sentences as the text file `eval_file.txt`, with on
 
 ### Get word surprisal values:
 
-    build/nt-parser/nt-parser-gen --dynet-mem 2000  -x -T train_gen.oracle -v path/to/unkified_eval_file -f path/to/surprisals_output --clusters path/to/clusters-train-berk.txt --input_dim 256 --lstm_input_dim 256 --hidden_dim 256 -m model_params_file
+    build/nt-parser/nt-parser-gen --dynet-mem 2000  -x -T path/to/train_gen.oracle -v path/to/unkified_eval_file -f path/to/surprisals_output --clusters path/to/clusters-train-berk.txt --input_dim 256 --lstm_input_dim 256 --hidden_dim 256 -m model_params_file
 
 This will write the surprisal values to path/to/surprisals_output.
 
@@ -32,10 +32,10 @@ We thank Miguel Ballesteros, Hui Wan, and Roger Levy for the help and advice wit
 
 [1] Choe, D., & Charniak, E. (2016). Parsing as Language Modeling. In Proceedings of the 2016 Conference on Empirical Methods in Natural Language Processing.
 
-[2] Dyer, C., Kuncoro, A., Ballesteros, M., & Smith, N. A. (2016, June). Recurrent Neural Network Grammars. In Proceedings of the 2016 Conference of the North American Chapter of the Association for Computational Linguistics: Human Language Technologies.
+[2] Dyer, C., Kuncoro, A., Ballesteros, M., & Smith, N. A. (2016). Recurrent Neural Network Grammars. In Proceedings of the 2016 Conference of the North American Chapter of the Association for Computational Linguistics: Human Language Technologies.
 
 [3] Hale, J., Dyer, C., Kuncoro, A., & Brennan, J. (2018). Finding Syntax in Human Encephalography with Beam Search. In Proceedings of the 56th Annual Meeting of the Association for Computational Linguistics (Volume 1: Long Papers).
 
 [4] Stern, M., Fried, D., & Klein, D. (2017). Effective Inference for Generative Neural Parsing. In Proceedings of the 2017 Conference on Empirical Methods in Natural Language Processing.
 
-[5] Wilcox, E., Qian, P., Futrell, R., Ballesteros, M., & Levy, R. (2019, June). Structural Supervision Improves Learning of Non-Local Grammatical Dependencies. In Proceedings of the 2019 Conference of the North American Chapter of the Association for Computational Linguistics: Human Language Technologies, Volume 1 (Long and Short Papers).
+[5] Wilcox, E., Qian, P., Futrell, R., Ballesteros, M., & Levy, R. (2019). Structural Supervision Improves Learning of Non-Local Grammatical Dependencies. In Proceedings of the 2019 Conference of the North American Chapter of the Association for Computational Linguistics: Human Language Technologies, Volume 1 (Long and Short Papers).
