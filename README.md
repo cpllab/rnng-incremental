@@ -18,6 +18,8 @@ Please refers to the original [RNNG](https://github.com/clab/rnng) repository fo
 
 ### Unkify input sentences: 
 
+Assuming a list of tokenized sentences as the text file `eval_file.txt`, with one sentence per line:
+
     python get_unkified_input.py train_vocab.txt eval_file.txt > unkified_eval_file.txt
 
 ### Get word surprisal values:
