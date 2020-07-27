@@ -1,6 +1,6 @@
 # Word-synchronous Beam Search with Fast-tracking for Recurrent Neural Network Grammars
 
-This repository implements word-synchronous beam search with fast-tracking (Stern et al. 2017; Hale et al., 2018) for Recurrent Neural Network Grammars (Dyer et al., 2016).
+This repository implements word-synchronous beam search with fast-tracking (Stern et al. 2017; Hale et al., 2018) for Recurrent Neural Network Grammars (Dyer et al., 2016). 
 
 ## Set up the repository
 
@@ -18,15 +18,15 @@ Please refers to the original [RNNG](https://github.com/clab/rnng) repository fo
 
 ### Get word surprisal values:
 
-    build/nt-parser/nt-parser-gen --dynet-mem 2000  -x -T train_gen.oracle -v path/to/unkified_eval_file -f path/to/surprisals_output --clusters clusters-train-berk.txt --input_dim 256 --lstm_input_dim 256 --hidden_dim 256 -m ntparse_gen_D0.3_2_256_256_16_256-pid20681.params
+    build/nt-parser/nt-parser-gen --dynet-mem 2000  -x -T train_gen.oracle -v path/to/unkified_eval_file -f path/to/surprisals_output --clusters clusters-train-berk.txt --input_dim 256 --lstm_input_dim 256 --hidden_dim 256 -m model_params_file
 
 This will write the surprisal values to path/to/surprisals_output.
 
-### Acknowledgement
+## Acknowledgement
 
-We thank Miguel Ballesteros, Hui Wan, and Roger Levy for help with the implementation.
+We thank Miguel Ballesteros, Hui Wan, and Roger Levy for the help and advice with the implementation.
 
-### References
+## References
 
 [1] Dyer, C., Kuncoro, A., Ballesteros, M., & Smith, N. A. (2016). Recurrent Neural Network Grammars. In Proceedings of NAACL-HLT.
 

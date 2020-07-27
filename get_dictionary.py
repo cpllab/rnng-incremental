@@ -1,5 +1,3 @@
-# This file has been modified by Peng.
-#
 # The original return 'word_list' of the function get_dict() has been changed to 'set(word_list)'
 # to improve the code performance at scale, as the returned value is used by the function unkify()
 # in the scripts get_oracle.py and get_oracle_gen.py for checking whether a terminal token is in the 
