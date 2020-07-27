@@ -4,11 +4,7 @@ This repository implements word-synchronous beam search with fast-tracking (Ster
 
 ## Set up the repository
 
-Please download the latest version of [Dynet](https://github.com/clab/dynet) and put it in the root folder of this repository.
-
-## Model training and evaluation
-
-Please refers to the original [RNNG](https://github.com/clab/rnng) repository for instructions on model training and evaluation. The oracle files for training and evaluating the generative RNNG (`nt-parser-gen`) also work for `nt-parser-gen-action-only`. Notice that since the code here uses [Dynet](https://github.com/clab/dynet), the flag `--cnn-mem` in the commands will need to be changed to `--dynet-mem`.
+Please download the latest version of [Dynet](https://github.com/clab/dynet) and put it in the root folder of this repository. Please refers to the original [RNNG](https://github.com/clab/rnng) repository for instructions on building the repository as well as model training and evaluation. The oracle files for training and evaluating the generative RNNG (`nt-parser-gen`) also work for `nt-parser-gen-action-only`. Notice that since the code here uses [Dynet](https://github.com/clab/dynet), the flag `--cnn-mem` in the commands will need to be changed to `--dynet-mem`.
 
 ## Estimate word surprisals
 
