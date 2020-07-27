@@ -24,7 +24,7 @@ def get_between_brackets(line, start_idx):
         output.append(char)
     return ''.join(output)
 
-def get_dict(lines):
+def get_dict(lines, return_set=True):
     output = [] 
     for line in lines:
         #print 'curr line', line_strip
@@ -48,12 +48,14 @@ def get_dict(lines):
     for item in words_dict:
         if words_dict[item] > 1:
             words_list.append(item) 
-    return set(words_list) # change the list type to a set to improve the performance
+    if return_set:
+        words_list = set(words_list) # return a set to improve the performance
+    return words_list
 
 if __name__ == '__main__':
     input_file = open(sys.argv[1], 'r')
     lines = input_file.readlines()
-    words_list = sorted(list(get_dict(lines))) # sorted the vocab 
+    words_list = get_dict(lines, return_set=False)
     #print 'number of words', len(words_list)
     for word in words_list:
         print word
