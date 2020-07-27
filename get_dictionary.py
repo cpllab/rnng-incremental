@@ -5,6 +5,8 @@
 #
 # The main function prints out the vocabulary as one word per line.
 
+import sys
+
 def is_next_open_bracket(line, start_idx):
     for char in line[(start_idx + 1):]:
         if char == '(':
@@ -49,7 +51,7 @@ def get_dict(lines):
     return set(words_list) # change the list type to a set to improve the performance
 
 if __name__ == '__main__':
-    input_file = open('train.02-21', 'r')
+    input_file = open(sys.argv[1], 'r')
     lines = input_file.readlines()
     words_list = sorted(list(get_dict(lines))) # sorted the vocab 
     #print 'number of words', len(words_list)
