@@ -1,3 +1,8 @@
+//
+// This file implements word-synchronous beam search with fast-tracking to
+// estimate word surprisals.
+//
+
 #include <cstdlib>
 #include <iostream>
 #include <vector>
@@ -1200,15 +1205,18 @@ int main(int argc, char** argv) {
       f_name = "./surprisals_"+conf["eval_data"].as<string>()+".txt";
     }
     f.open(f_name);
+
+    // output header
+    f << "sentence_id\ttoken_id\ttoken\tsurprisal\n";
+
     for (unsigned sii = 0; sii < eval_size; ++sii) {
       const auto& sentence=eval_corpus.sents[sii];
       ComputationGraph hg;
       vector<double> surprisals;
       surprisals = parser.log_prob_parser_beam2(&hg, sentence, &right, BEAM_SIZE, FASTTRACK_BEAM_SIZE, WORD_BEAM_SIZE, false);
       for(unsigned k = 0; k < surprisals.size(); ++k){
-        f << termdict.convert(sentence.raw[k]) << "\t" << surprisals[k] <<"\n";
+        f << (sii + 1) << "\t" << (k + 1) << "\t" << termdict.convert(sentence.raw[k]) << "\t" << surprisals[k] <<"\n";
       }
-      f << "<eos>\t0.0\n";
       f.flush();
     }
     f.close();
