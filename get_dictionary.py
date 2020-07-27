@@ -55,7 +55,7 @@ def get_dict(lines, return_set=True):
 if __name__ == '__main__':
     input_file = open(sys.argv[1], 'r')
     lines = input_file.readlines()
-    words_list = get_dict(lines, return_set=False)
+    words_list = sorted(get_dict(lines, return_set=False))
     #print 'number of words', len(words_list)
     for word in words_list:
         print word
