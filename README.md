@@ -8,6 +8,8 @@ Please put the latest version of [Dynet](https://github.com/clab/dynet) in the r
 
 ## Estimate word surprisals
 
+The Python scripts here work with Python 2.7 version.
+
 ### Prepare the vocabulary file:
 
     python get_dictionary.py train.02-21 > train_vocab.txt
