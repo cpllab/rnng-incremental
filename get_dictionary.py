@@ -2,7 +2,8 @@
 # to improve the code performance at scale, as the returned value is used by the function unkify()
 # in the scripts get_oracle.py and get_oracle_gen.py for checking whether a terminal token is in the 
 # vocabulary.
-
+#
+# The main function prints out the vocabulary as one word per line.
 
 def is_next_open_bracket(line, start_idx):
     for char in line[(start_idx + 1):]:
@@ -50,7 +51,7 @@ def get_dict(lines):
 if __name__ == '__main__':
     input_file = open('train.02-21', 'r')
     lines = input_file.readlines()
-    words_list = get_dict(lines) 
+    words_list = sorted(list(get_dict(lines))) # sorted the vocab 
     #print 'number of words', len(words_list)
     for word in words_list:
         print word
