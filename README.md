@@ -1,6 +1,6 @@
 # Word-synchronous Beam Search with Fast-tracking for Recurrent Neural Network Grammars
 
-This repository implements word-synchronous beam search with fast-tracking (Stern et al. 2017; Hale et al., 2018) for Recurrent Neural Network Grammars (Dyer et al., 2016), as well as an ablated RNNG model referred as "ActionLSTM" in Wilcox et al. (2019). The ablated model is implemented in `nt-parser/nt-parser-gen-action-only.cc`,  which only uses the encoder of the action sequence, similar to Choe and Charniak (2016).
+This repository implements word-synchronous beam search with fast-tracking (Stern et al. 2017; Hale et al., 2018) for Recurrent Neural Network Grammars (Dyer et al., 2016), as well as an ablated RNNG model referred as "ActionLSTM" in Wilcox et al. (2019). The ablated model is implemented in `nt-parser/nt-parser-gen-action-only.cc`,  which only uses the encoder of the action sequence, similar to Choe and Charniak (2016). The code is built on the [RNNG](https://github.com/clab/rnng) repository.
 
 ## Set up the repository
 
@@ -24,7 +24,9 @@ Assuming a list of tokenized sentences as the text file `eval_file.txt`, with on
 
     build/nt-parser/nt-parser-gen --dynet-mem 2000  -x -T path/to/train_gen.oracle -v path/to/unkified_eval_file -f path/to/surprisals_output --clusters path/to/clusters-train-berk.txt --input_dim 256 --lstm_input_dim 256 --hidden_dim 256 -m model_params_file
 
-This will write the surprisal values to path/to/surprisals_output.
+This will write the surprisal values estimated from a trained generative RNNG to path/to/surprisals_output. The hyperparameters of the word-synchronous beam search algorithm can be adjusted through the command-line flags, including `--beam_size` (default 100), `--fasttrack_beam_size` (default 5), and `--word_beam_size` (default 10). 
+
+`nt-parser-gen-action-only` also supports the usage of this algorithm with the action-only model.
 
 ## Acknowledgement
 
