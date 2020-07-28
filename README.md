@@ -24,7 +24,7 @@ Assuming a list of tokenized sentences as the text file `eval_file.txt`, with on
 
     build/nt-parser/nt-parser-gen --dynet-mem 2000  -x -T path/to/train_gen.oracle -v path/to/unkified_eval_file -f path/to/surprisals_output --clusters path/to/clusters-train-berk.txt --input_dim 256 --lstm_input_dim 256 --hidden_dim 256 -m model_params_file
 
-This will write the surprisal values estimated from a trained generative RNNG to path/to/surprisals_output. The hyperparameters of the word-synchronous beam search algorithm can be adjusted through the command-line flags, including `--beam_size` (default 100), `--fasttrack_beam_size` (default 5), and `--word_beam_size` (default 10). 
+This will write the surprisal values estimated from a trained generative RNNG to path/to/surprisals_output. The hyperparameters of the word-synchronous beam search algorithm can be adjusted through the command-line flags, `--beam_size` (default 100), `--fasttrack_beam_size` (default 5), and `--word_beam_size` (default 10). 
 
 `nt-parser-gen-action-only` also supports the usage of this algorithm with the action-only model.
 
