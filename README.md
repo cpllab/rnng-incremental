@@ -38,8 +38,10 @@ We thank Miguel Ballesteros, Hui Wan, and Roger Levy for the help and advice wit
 
 [2] Dyer, C., Kuncoro, A., Ballesteros, M., & Smith, N. A. (2016). Recurrent Neural Network Grammars. In Proceedings of the 2016 Conference of the North American Chapter of the Association for Computational Linguistics: Human Language Technologies.
 
-[3] Hale, J., Dyer, C., Kuncoro, A., & Brennan, J. (2018). Finding Syntax in Human Encephalography with Beam Search. In Proceedings of the 56th Annual Meeting of the Association for Computational Linguistics (Volume 1: Long Papers).
+[3] Futrell, R., Wilcox, E., Morita, T., Qian, P., Ballesteros, M., & Levy, R. (2019). Neural language models as psycholinguistic subjects: Representations of syntactic state. In Proceedings of the 2019 Conference of the North American Chapter of the Association for Computational Linguistics: Human Language Technologies.
 
-[4] Stern, M., Fried, D., & Klein, D. (2017). Effective Inference for Generative Neural Parsing. In Proceedings of the 2017 Conference on Empirical Methods in Natural Language Processing.
+[4] Hale, J., Dyer, C., Kuncoro, A., & Brennan, J. (2018). Finding Syntax in Human Encephalography with Beam Search. In Proceedings of the 56th Annual Meeting of the Association for Computational Linguistics (Volume 1: Long Papers).
 
-[5] Wilcox, E., Qian, P., Futrell, R., Ballesteros, M., & Levy, R. (2019). Structural Supervision Improves Learning of Non-Local Grammatical Dependencies. In Proceedings of the 2019 Conference of the North American Chapter of the Association for Computational Linguistics: Human Language Technologies, Volume 1 (Long and Short Papers).
+[5] Stern, M., Fried, D., & Klein, D. (2017). Effective Inference for Generative Neural Parsing. In Proceedings of the 2017 Conference on Empirical Methods in Natural Language Processing.
+
+[6] Wilcox, E., Qian, P., Futrell, R., Ballesteros, M., & Levy, R. (2019). Structural Supervision Improves Learning of Non-Local Grammatical Dependencies. In Proceedings of the 2019 Conference of the North American Chapter of the Association for Computational Linguistics: Human Language Technologies, Volume 1 (Long and Short Papers).
