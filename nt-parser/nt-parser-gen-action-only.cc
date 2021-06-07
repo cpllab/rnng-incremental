@@ -666,13 +666,13 @@ static void prune(vector<ParserStateAction*>& pq, unsigned k) {
 }
 
 
-vector<double> log_prob_parser_beam2(ComputationGraph* hg,
-                     const parser::Sentence& sent,
-                     double *right,
-                     unsigned beam_size,
-                     unsigned fast_track_size,
-                     unsigned word_beam_size,
-                     bool is_evaluation) {
+vector<double> log_prob_parser_beam(ComputationGraph* hg,
+                                    const parser::Sentence& sent,
+                                    double *right,
+                                    unsigned beam_size,
+                                    unsigned fast_track_size,
+                                    unsigned word_beam_size,
+                                    bool is_evaluation) {
     vector<unsigned> results;
     vector<string> stack_content;
     stack_content.push_back("ROOT_GUARD");
@@ -1237,7 +1237,8 @@ int main(int argc, char** argv) {
       const auto& sentence=eval_corpus.sents[sii];
       ComputationGraph hg;
       vector<double> surprisals;
-      surprisals = parser.log_prob_parser_beam2(&hg, sentence, &right, BEAM_SIZE, FASTTRACK_BEAM_SIZE, WORD_BEAM_SIZE, false);
+      surprisals = parser.log_prob_parser_beam(&hg, sentence, &right, BEAM_SIZE, FASTTRACK_BEAM_SIZE, WORD_BEAM_SIZE,
+                                               false);
       for(unsigned k = 0; k < surprisals.size(); ++k){
         f << (sii + 1) << "\t" << (k + 1) << "\t" << termdict.convert(sentence.raw[k]) << "\t" << surprisals[k] <<"\n";
       }

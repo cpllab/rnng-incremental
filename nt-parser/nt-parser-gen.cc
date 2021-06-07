@@ -643,23 +643,24 @@ static void prune(vector<ParserStateAction*>& pq, unsigned k) {
   //}
 }
 
-
-vector<double> log_prob_parser_beam2(ComputationGraph* hg,
-                     const parser::Sentence& sent,
-                     double *right,
-                     unsigned beam_size,
-                     unsigned fast_track_size,
-                     unsigned word_beam_size,
-                     bool is_evaluation) {
+/**Probabilistic parsing using word-synchronous beam-search*/
+vector<double> log_prob_parser_beam(ComputationGraph* hg,
+                                    const parser::Sentence& sent,
+                                    double *right,
+                                    unsigned beam_size,
+                                    unsigned fast_track_size,
+                                    unsigned word_beam_size,
+                                    bool is_evaluation) {
+    //a vector to store the results in
     vector<unsigned> results;
     vector<string> stack_content;
     stack_content.push_back("ROOT_GUARD");
     const bool sample = sent.size() == 0;
     const bool build_training_graph = true;
     assert(sample || build_training_graph);
-    bool apply_dropout = (DROPOUT && !is_evaluation);
-    if (sample) apply_dropout = false;
-
+    //check if we're applying dropout and apply it if we are
+    bool apply_dropout = (DROPOUT && !is_evaluation && !sample);
+    //if (sample) apply_dropout = false;
     if (apply_dropout) {
       stack_lstm.set_dropout(DROPOUT);
       term_lstm.set_dropout(DROPOUT);
@@ -673,6 +674,8 @@ vector<double> log_prob_parser_beam2(ComputationGraph* hg,
       const_lstm_fwd.disable_dropout();
       const_lstm_rev.disable_dropout();
     }
+
+    //initialize the computation graphs here
     term_lstm.new_graph(*hg);
     stack_lstm.new_graph(*hg);
     action_lstm.new_graph(*hg);
@@ -682,25 +685,19 @@ vector<double> log_prob_parser_beam2(ComputationGraph* hg,
     term_lstm.start_new_sequence();
     stack_lstm.start_new_sequence();
     action_lstm.start_new_sequence();
+
     // variables in the computation graph representing the parameters
     Expression pbias = parameter(*hg, p_pbias);
     Expression S = parameter(*hg, p_S);
     Expression A = parameter(*hg, p_A);
     Expression T = parameter(*hg, p_T);
-    //Expression pbias2 = parameter(*hg, p_pbias2);
-    //Expression S2 = parameter(*hg, p_S2);
-    //Expression A2 = parameter(*hg, p_A2);
-
-    //Expression ib = parameter(*hg, p_ib);
     Expression cbias = parameter(*hg, p_cbias);
-    //Expression w2l = parameter(*hg, p_w2l);
     Expression p2a = parameter(*hg, p_p2a);
     Expression abias = parameter(*hg, p_abias);
     Expression action_start = parameter(*hg, p_action_start);
     Expression cW = parameter(*hg, p_cW);
 
     action_lstm.add_input(action_start);
-
     vector<Expression> terms(1, lookup(*hg, p_w, kSOS));
     term_lstm.add_input(terms.back());
 
@@ -714,8 +711,8 @@ vector<double> log_prob_parser_beam2(ComputationGraph* hg,
     int nopen_parens = 0;
     char prev_a = '0';
 
+    //create a new parser state object and assign the relevant values
     ParserState* init = new ParserState();
-
     init->stack_lstm = stack_lstm;
     init->term_lstm = term_lstm;
     init->action_lstm = action_lstm;
@@ -732,32 +729,37 @@ vector<double> log_prob_parser_beam2(ComputationGraph* hg,
     init->nopen_parens = nopen_parens;
     init->prev_a = prev_a;
     init->fringe_index = 0;
-
     init->log_posterior_parse = 0;
     init->log_prob_additional_parse = 0;
 
+    //keep track of the parser states and the ones we need to delete
     vector<ParserState*> pq_this;
     pq_this.push_back(init);
     unordered_set<ParserState*> need_to_delete;
 
+    //store the surprisals and log probabilities
     vector<double> surprisals;
     vector<double> log_probs;
-    
+
+    //iterate through the sentence
     for (unsigned w_index = 0; w_index < sent.size(); ++w_index) {
       cerr << "Word index: " << w_index << " " << termdict.convert(sent.raw[w_index]) << "; thiswords size: " << pq_this.size() << endl;
       vector<ParserState*> pq_next;
 
+      //while the beam isn't full, expand it
       while (pq_next.size() < beam_size){
         vector<ParserStateAction*> fringe;
+        // iterate through all parser states in the input beam
         for (auto p_this : pq_this){
           assert (p_this->stack.size() == p_this->stack_content.size());
+          //get all current valid actions at the parser state
           vector<unsigned> current_valid_actions;
           for (auto a: possible_actions) {
             if (IsActionForbidden_Generative(adict.convert(a), p_this->prev_a, p_this->terms.size(), p_this->stack.size(), p_this->nopen_parens))
               continue;
             current_valid_actions.push_back(a);
-          }   
-          // cerr << "valid action size = " << current_valid_actions.size() << endl;
+          }
+          //get the corresponding stack, action, and term summaries, and apply dropout if needed
           Expression stack_summary = p_this->stack_lstm.back();
           Expression action_summary = p_this->action_lstm.back();
           Expression term_summary = p_this->term_lstm.back();
@@ -766,84 +768,81 @@ vector<double> log_prob_parser_beam2(ComputationGraph* hg,
             action_summary = dropout(action_summary, DROPOUT);
             term_summary = dropout(term_summary, DROPOUT);
           }
+
           Expression p_t = affine_transform({pbias, S, stack_summary, A, action_summary, T, term_summary});
           Expression nlp_t = rectify(p_t);
           Expression r_t = affine_transform({abias, p2a, nlp_t});
-
+          //action distribution expression over the current valid actions
           Expression adiste = log_softmax(r_t, current_valid_actions);
 
-
+          //iterate through the current valid actions and add them to the fringe
           for(auto action : current_valid_actions){
-	    const string& a_string = adict.convert(action);
-	    char a_char = a_string[0];
-	    double new_score = p_this->score + as_scalar(pick(adiste, action).value());
-	    unsigned wordid = 0;
-	    // assert(termc < sent.size());
-	    wordid = sent.raw[w_index];
-	    if (a_char == 'S') 
-	      new_score += as_scalar((-cfsm->neg_log_softmax(nlp_t, wordid)).value());
-	    
-	    ParserStateAction* p_state_action = new ParserStateAction(p_this, action, a_char, wordid, new_score,  fringe.size());
-	    fringe.push_back(p_state_action);
-	  }// all current actions
-	} // iterate all parser states in thiswords --  for (auto p_this : pq_this){
-
-        // cerr << "fringe size is " << fringe.size() << endl;
+	        const string& a_string = adict.convert(action);
+	        char a_char = a_string[0];
+	        double new_score = p_this->score + as_scalar(pick(adiste, action).value());
+	        unsigned wordid = 0;
+	        // class factored softmax if we're doing generation
+	        wordid = sent.raw[w_index];
+	        if (a_char == 'S')
+	            new_score += as_scalar((-cfsm->neg_log_softmax(nlp_t, wordid)).value());
+	        ParserStateAction* p_state_action = new ParserStateAction(p_this, action, a_char, wordid, new_score,  fringe.size());
+	        fringe.push_back(p_state_action);
+          }
+	    }
         // sort all parser states in the fringe
         prune(fringe, fringe.size());
         unsigned fast_track_count = 0;
         int cut = max<int>((int)fringe.size()-beam_size, 0);
 
-	vector<ParserState*> pq_this_new;
+
+	    vector<ParserState*> pq_this_new;
+	    //iterate through the fringe
         for(int k = fringe.size()-1; k >= 0; k--){
-          if(k >= cut){
-	    ParserState* newstate = fringe[k]->applyAction(hg, cbias, cW, p_a, p_w, p_nt, p_ntup, apply_dropout);
-            if(fringe[k]->a_char == 'S'){
-              pq_next.push_back(newstate);
-            }else if (fringe[k]->a_char == 'R'){
-              int i = newstate->is_open_paren.size() - 1; //get the last thing on the stack
-              while(newstate->is_open_paren[i] < 0) { --i; } 
-              if(i>=0){
-                pq_this_new.push_back(newstate);
-              }else{
-                need_to_delete.insert(newstate);
-              }
-            }else{
-              pq_this_new.push_back(newstate);
-            }            
-          }else{
-            if(fringe[k]->a_char == 'S' && fast_track_count < fast_track_size){
-	      ParserState* newstate = fringe[k]->applyAction(hg, cbias, cW, p_a, p_w, p_nt, p_ntup, apply_dropout);
-              pq_next.push_back(newstate);
-              fast_track_count += 1;
-            }else{
-	      // don't need to do anything, fringe is local
-              // need_to_delete_psa.insert(fringe[k]); 
+            //if the item is above the cut
+            if(k >= cut){
+	            ParserState* newstate = fringe[k]->applyAction(hg, cbias, cW, p_a, p_w, p_nt, p_ntup, apply_dropout);
+                //if came by lexical action, then add it to possible next actions
+	            if(fringe[k]->a_char == 'S'){
+                    pq_next.push_back(newstate);
+                //otherwise, structural. If action is reduce, make sure it's possible
+	            }else if (fringe[k]->a_char == 'R'){
+                    int i = newstate->is_open_paren.size() - 1; //get the last thing on the stack
+                    while(newstate->is_open_paren[i] < 0) { --i; }
+                    if(i>=0){
+                        pq_this_new.push_back(newstate);
+                    }else{
+                        need_to_delete.insert(newstate);}
+                // append structural actions to the current state.
+                }else{
+                    pq_this_new.push_back(newstate);
+                }
+	        //if it's not above the cut and it's a lexical action, only add if we're fast-tracking
+            } else {
+                if(fringe[k]->a_char == 'S' && fast_track_count < fast_track_size){
+	                ParserState* newstate = fringe[k]->applyAction(hg, cbias, cW, p_a, p_w, p_nt, p_ntup, apply_dropout);
+                    pq_next.push_back(newstate);
+                    fast_track_count += 1;
+                }
             }
-          }
         }
 
-	// cerr << "delete " << fringe.size() << " ParserStateAction pointers in fringe." << endl;
+	    //clear the fringe and update the current action queue
         for (ParserStateAction* psa: fringe) {delete psa;}
         fringe.clear();
         fringe.shrink_to_fit();
-
-	// cerr << "delete " << pq_this.size() << " ParserState pointers in thiswords." << endl;
         for (ParserState* ps: pq_this) {delete ps;}
         pq_this.clear();
         pq_this.shrink_to_fit();
-	for (auto p_new : pq_this_new) {
-	  pq_this.push_back(p_new);
-	}
-	pq_this_new.clear();
-	pq_this_new.shrink_to_fit();
+	    for (auto p_new : pq_this_new) {
+	        pq_this.push_back(p_new);
+	    }
+	    pq_this_new.clear();
+	    pq_this_new.shrink_to_fit();
 
         int delcount = 0;
-        for (ParserState* ps: need_to_delete) {delete ps; delcount++;}
+        for (ParserState* ps: need_to_delete) {delete ps;delcount++;}
         need_to_delete.clear();
-        // cerr << "delete " << delcount << " instantiated in fringe, add " << pq_this.size() << " from fringe to thiswords, nextwords size is " << pq_next.size() << endl;
-
-      } // while (pq_next.size() < beam_size){
+      }
 
       // add parser state pointers from pq_next to need_to_delete
       for (auto parser_state : pq_next){
@@ -873,7 +872,7 @@ vector<double> log_prob_parser_beam2(ComputationGraph* hg,
         cerr << "\n";    
       }      
 
-      // cerr << "delete " << pq_this.size() << " ParserState pointers in thiswords." << endl;
+      //clear the current states, only need the next ones
       for (ParserState* ps: pq_this) {delete ps;}
       pq_this.clear();
       pq_this.shrink_to_fit();
@@ -882,20 +881,19 @@ vector<double> log_prob_parser_beam2(ComputationGraph* hg,
       for (auto ps : pq_next){
         marginal_prob += exp(ps->score);
       }
+      //get the log probabilities
       log_probs.push_back(-log2(marginal_prob));
-
       for (auto ps : pq_next){
         ParserState* p_new = new ParserState();
         *p_new = *ps;
         pq_this.push_back(p_new);
       }
-
       int delcount = 0;
       for (ParserState* ps: need_to_delete) {delete ps; delcount++;}
-      // cerr << "delete " << delcount << " ParserState pointers." << endl;
       need_to_delete.clear();
     }
 
+    //calculate surprisals
     for (unsigned k = 0; k < log_probs.size(); k++){
       if(k == 0){
         surprisals.push_back(log_probs[k]);
@@ -903,18 +901,15 @@ vector<double> log_prob_parser_beam2(ComputationGraph* hg,
         surprisals.push_back(log_probs[k] - log_probs[k-1]);
       }
     }
-
     // print words and surprisals
     for (unsigned k = 0; k < surprisals.size(); k++){
       cerr << termdict.convert(sent.raw[k])  << "\t" << surprisals[k] << endl;
     }
-
+    //clear the queue and return the surprisals
     for (ParserState* ps: pq_this) {delete ps;}
     pq_this.clear();
-
     return surprisals;
-}
-
+    }
 };
 
 void signal_callback_handler(int /* signum */) {
@@ -926,9 +921,8 @@ void signal_callback_handler(int /* signum */) {
   requested_stop = true;
 }
 
-// TODO: dynet is leaking memory everywhere and taking up a ton of RAM, can we do anything about this?
 int main(int argc, char** argv) {
-    dynet::initialize(argc, argv); //initialize dynet
+    dynet::initialize(argc, argv);
     //initialize the command-line arguments into a map from the variables to their values
     po::variables_map conf;
     InitCommandLine(argc, argv, &conf);
@@ -954,8 +948,7 @@ int main(int argc, char** argv) {
     WORD_BEAM_SIZE = conf["word_beam_size"].as<unsigned>();
     LEARNING_RATE = conf["lr"].as<float>();
 
-
-
+    //print out the name of the model that will result
     ostringstream os;
     os << "ntparse_gen"
      << "_D" << DROPOUT
@@ -968,66 +961,69 @@ int main(int argc, char** argv) {
     const string fname = os.str();
     cerr << "PARAMETER FILE: " << fname << endl;
     bool softlinkCreated = false;
-    return -1;
 
-  kSOS = termdict.convert("<s>");
-  // Model model;
-  ParameterCollection model;
-  cfsm = new ClassFactoredSoftmaxBuilder(HIDDEN_DIM, conf["clusters"].as<string>(), termdict, model);
-  parser::TopDownOracleGen corpus(&termdict, &adict, &posdict, &ntermdict);
-  parser::TopDownOracleGen dev_corpus(&termdict, &adict, &posdict, &ntermdict);
-  parser::TopDownOracleGen2 test_corpus(&termdict, &adict, &posdict, &ntermdict);
-  parser::TopDownOracleGen eval_corpus(&termdict, &adict, &posdict, &ntermdict);
+    //initialize the model and the cfsm for fast lookup
+    kSOS = termdict.convert("<s>");
+    ParameterCollection model;
+    cfsm = new ClassFactoredSoftmaxBuilder(HIDDEN_DIM, conf["clusters"].as<string>(), termdict, model);
 
-  corpus.load_oracle(conf["training_data"].as<string>());
-  if (conf.count("words"))
-    parser::ReadEmbeddings_word2vec(conf["words"].as<string>(), &termdict, &pretrained);
+    //load in the corpora as oracles
+    parser::TopDownOracleGen corpus(&termdict, &adict, &posdict, &ntermdict);
+    parser::TopDownOracleGen dev_corpus(&termdict, &adict, &posdict, &ntermdict);
+    parser::TopDownOracleGen2 test_corpus(&termdict, &adict, &posdict, &ntermdict);
+    parser::TopDownOracleGen eval_corpus(&termdict, &adict, &posdict, &ntermdict);
+    corpus.load_oracle(conf["training_data"].as<string>());
+    if (conf.count("words"))
+        parser::ReadEmbeddings_word2vec(conf["words"].as<string>(), &termdict, &pretrained);
 
-  // freeze dictionaries so we don't accidentaly load OOVs
-  termdict.freeze();
-  adict.freeze();
-  ntermdict.freeze();
-  posdict.freeze();
+    // freeze dictionaries so we don't accidentaly load OOVs
+    termdict.freeze();
+    adict.freeze();
+    ntermdict.freeze();
+    posdict.freeze();
 
-  if (conf.count("dev_data")) {
-    cerr << "Loading validation set\n";
-    dev_corpus.load_oracle(conf["dev_data"].as<string>());
-  }
+    //read in all the data
+    if (conf.count("dev_data")) {
+        cerr << "Loading validation set\n";
+        dev_corpus.load_oracle(conf["dev_data"].as<string>());
+    }
+    if (conf.count("test_data")) {
+        cerr << "Loading test set\n";
+        test_corpus.load_oracle(conf["test_data"].as<string>());
+    }
+    if (conf.count("eval_data")) {
+        cerr << "Loading evaluation set\n";
+        eval_corpus.load_raw_sent(conf["eval_data"].as<string>());
+    }
 
-  if (conf.count("test_data")) {
-    cerr << "Loading test set\n";
-    test_corpus.load_oracle(conf["test_data"].as<string>());
-  }
+    // linking the action dictionary to the non-terminal dictionary: pass in index of action NT(X), return index of X
+    for (unsigned i = 0; i < adict.size(); ++i) {
+        const string& a = adict.convert(i);
+        if (a[0] != 'N') continue;
+        size_t start = a.find('(') + 1;
+        size_t end = a.rfind(')');
+        int nt = ntermdict.convert(a.substr(start, end - start));
+        action2NTindex[i] = nt;
+    }
 
-  if (conf.count("eval_data")) {
-    cerr << "Loading evaluation set\n";
-    eval_corpus.load_raw_sent(conf["eval_data"].as<string>());
-  }  
+    //the dictionary of non-terminals that can be introduced onto the stack
+    NT_SIZE = ntermdict.size();
+    //the dictionary of vocabulary in the training & dev sets
+    VOCAB_SIZE = termdict.size();
+    //the dictionary of actions that the parser can take
+    ACTION_SIZE = adict.size();
+    //right now, the possible actions are all actions
+    possible_actions.resize(adict.size());
+    for (unsigned i = 0; i < adict.size(); ++i)
+      possible_actions[i] = i;
 
-  for (unsigned i = 0; i < adict.size(); ++i) {
-    const string& a = adict.convert(i);
-    if (a[0] != 'N') continue;
-    size_t start = a.find('(') + 1;
-    size_t end = a.rfind(')');
-    int nt = ntermdict.convert(a.substr(start, end - start));
-    action2NTindex[i] = nt;
-  }
-
-  NT_SIZE = ntermdict.size();
-  VOCAB_SIZE = termdict.size();
-  ACTION_SIZE = adict.size();
-  possible_actions.resize(adict.size());
-  for (unsigned i = 0; i < adict.size(); ++i)
-    possible_actions[i] = i;
-
-  ParserBuilder parser(&model, pretrained);
-  if (conf.count("model")) {
-    // ifstream in(conf["model"].as<string>().c_str());
-    // boost::archive::text_iarchive ia(in);
-    // ia >> model;
-    dynet::TextFileLoader l(conf["model"].as<string>().c_str());
-    l.populate(model);
-  }
+    //load in existing model
+    ParserBuilder parser(&model, pretrained);
+    if (conf.count("model")) {
+        cerr << "Loading existing model: " << conf["model"].as<string>().c_str() << "\n";
+        dynet::TextFileLoader l(conf["model"].as<string>().c_str());
+        l.populate(model);
+    }
 
   //TRAINING
   if (conf.count("train")) {
@@ -1165,6 +1161,8 @@ int main(int argc, char** argv) {
       }
     }
   } // should do training?
+
+  //TESTING
   if (test_corpus.size() > 0) {
     // if rescoring, we may have many repeats, cache them
     unordered_map<vector<int>, unordered_map<vector<int>,double,boost::hash<vector<int>>>, boost::hash<vector<int>>> s2a2p;
@@ -1190,38 +1188,43 @@ int main(int argc, char** argv) {
     cerr << "test ppl (per word)=" << exp(llh / dwords) << endl;
   }
 
+  //EVALUATION & SURPRISAL
   if (eval_corpus.size() > 0) {
-    auto t_start = std::chrono::high_resolution_clock::now();
-    cerr << "start evaluation..." << endl;
-    unordered_map<vector<int>, unordered_map<vector<int>,double,boost::hash<vector<int>>>, boost::hash<vector<int>>> s2a2p;
-    unsigned eval_size = eval_corpus.size();
-    double llh = 0;
-    double right = 0;
-    ofstream f;
-    string f_name;
-    if (conf.count("file_path")){
-      f_name = conf["file_path"].as<string>();
-    }else{
-      f_name = "./surprisals_"+conf["eval_data"].as<string>()+".txt";
-    }
-    f.open(f_name);
+      cerr << "Beginning evaluation...\n";
+      auto t_start = std::chrono::high_resolution_clock::now();
+      unordered_map<vector<int>, unordered_map<vector<int>,double,boost::hash<vector<int>>>, boost::hash<vector<int>>> s2a2p;
+      unsigned eval_size = eval_corpus.size();
+      double right = 0;
 
-    // output header
-    f << "sentence_id\ttoken_id\ttoken\tsurprisal\n";
-
-    for (unsigned sii = 0; sii < eval_size; ++sii) {
-      const auto& sentence=eval_corpus.sents[sii];
-      ComputationGraph hg;
-      vector<double> surprisals;
-      surprisals = parser.log_prob_parser_beam2(&hg, sentence, &right, BEAM_SIZE, FASTTRACK_BEAM_SIZE, WORD_BEAM_SIZE, false);
-      for(unsigned k = 0; k < surprisals.size(); ++k){
-        f << (sii + 1) << "\t" << (k + 1) << "\t" << termdict.convert(sentence.raw[k]) << "\t" << surprisals[k] <<"\n";
+      //create the file stream to write to
+      ofstream f;
+      string f_name;
+      if (conf.count("file_path")){
+        f_name = conf["file_path"].as<string>();
+      }else{
+        f_name = "./surprisals_"+conf["eval_data"].as<string>()+".txt";
       }
-      f.flush();
-    }
-    f.close();
-    auto t_end = std::chrono::high_resolution_clock::now();
-    cerr << "TEST: " << eval_corpus.size()  << " sents in " << std::chrono::duration<double, std::milli>(t_end-t_start).count() << " ms]" << endl;
+      f.open(f_name);
+      // output header
+      f << "sentence_id\ttoken_id\ttoken\tsurprisal\n";
 
+      //iterate through the sentences
+      for (unsigned sii = 0; sii < eval_size; ++sii) {
+        const auto& sentence=eval_corpus.sents[sii];
+        ComputationGraph hg;
+        vector<double> surprisals;
+        //TODO: add particle filtering option here
+        surprisals = parser.log_prob_parser_beam(&hg, sentence, &right, BEAM_SIZE, FASTTRACK_BEAM_SIZE, WORD_BEAM_SIZE,false);
+        //write out the surprisals
+        for(unsigned k = 0; k < surprisals.size(); ++k){
+            f << (sii + 1) << "\t" << (k + 1) << "\t" << termdict.convert(sentence.raw[k]) << "\t" << surprisals[k] <<"\n";
+        }
+        f.flush();
+      }
+      //close the file, and log the time taken to complete
+      f.close();
+      cerr << "Results written to: " << f_name << "...\n";
+      auto t_end = std::chrono::high_resolution_clock::now();
+      cerr << "TEST: " << eval_corpus.size()  << " sents in " << std::chrono::duration<double, std::milli>(t_end-t_start).count() << " ms]" << endl;
   }
 }
