@@ -911,13 +911,11 @@ vector<double> log_prob_parser_beam(ComputationGraph* hg,
     pq_this.clear();
     return surprisals;
     }
-    
+
 vector<double> log_prob_parser_particle(ComputationGraph* hg,
                                         const parser::Sentence& sent,
                                         double *right,
-                                        unsigned beam_size,
-                                        unsigned fast_track_size,
-                                        unsigned word_beam_size,
+                                        unsigned num_particles,
                                         bool is_evaluation) {
         //a vector to store the results in
         vector<unsigned> results;
@@ -965,7 +963,6 @@ vector<double> log_prob_parser_particle(ComputationGraph* hg,
         Expression action_start = parameter(*hg, p_action_start);
         Expression cW = parameter(*hg, p_cW);
 
-        //TODO: what's happening here?
         //initialize the action and term lstms (?)
         action_lstm.add_input(action_start);
         vector<Expression> terms(1, lookup(*hg, p_w, kSOS));
@@ -980,30 +977,29 @@ vector<double> log_prob_parser_particle(ComputationGraph* hg,
         int nopen_parens = 0; // there are no open parentheses, and the first action is a dummy
         char prev_a = '0';
 
-        //create a new parser state object and assign the relevant values
-        ParserState* init = new ParserState();
-        init->stack_lstm = stack_lstm;
-        init->term_lstm = term_lstm;
-        init->action_lstm = action_lstm;
-        init->const_lstm_fwd = const_lstm_fwd;
-        init->const_lstm_rev = const_lstm_rev;
-        init->terms = terms;
-        init->is_open_paren = is_open_paren;
-        init->nt_count = 0;
-        init->stack = stack;
-        init->stack_content = stack_content;
-        init->results = results;
-        // init.log_probs = log_probs;
-        init->score = 0;
-        init->nopen_parens = nopen_parens;
-        init->prev_a = prev_a;
-        init->fringe_index = 0;
-        init->log_posterior_parse = 0;
-        init->log_prob_additional_parse = 0;
+        vector<ParserState*> particles;
+        for (int i = 0; i < num_particles; i++){
+            ParserState* currstate = new ParserState();
+            currstate->stack_lstm = stack_lstm;
+            currstate->term_lstm = term_lstm;
+            currstate->action_lstm = action_lstm;
+            currstate->const_lstm_fwd = const_lstm_fwd;
+            currstate->const_lstm_rev = const_lstm_rev;
+            currstate->terms = terms;
+            currstate->is_open_paren = is_open_paren;
+            currstate->nt_count = 0;
+            currstate->stack = stack;
+            currstate->stack_content = stack_content;
+            currstate->results = results;
+            currstate->score = 0;
+            currstate->nopen_parens = nopen_parens;
+            currstate->prev_a = prev_a;
+            currstate->fringe_index = 0;
+            currstate->log_posterior_parse = 0;
+            currstate->log_prob_additional_parse = 0;
+            particles.push_back(currstate);
+        }
 
-        //keep track of the parser states and the ones we need to delete
-        vector<ParserState*> pq_this;
-        pq_this.push_back(init);
         unordered_set<ParserState*> need_to_delete;
 
         //store the surprisals and log probabilities
@@ -1012,155 +1008,225 @@ vector<double> log_prob_parser_particle(ComputationGraph* hg,
 
         //iterate through the sentence
         for (unsigned w_index = 0; w_index < sent.size(); ++w_index) {
-            cerr << "Word index: " << w_index << " " << termdict.convert(sent.raw[w_index]) << "; thiswords size: " << pq_this.size() << endl;
-            vector<ParserState*> pq_next;
-
-            //while the beam isn't full, expand it
-            while (pq_next.size() < beam_size){
-                vector<ParserStateAction*> fringe;
-                // iterate through all parser states in the input beam
-                for (auto p_this : pq_this){
-                    assert (p_this->stack.size() == p_this->stack_content.size());
-                    //get all current valid actions at the parser state
-                    vector<unsigned> current_valid_actions;
-                    for (auto a: possible_actions) {
-                        if (IsActionForbidden_Generative(adict.convert(a), p_this->prev_a, p_this->terms.size(), p_this->stack.size(), p_this->nopen_parens))
-                            continue;
-                        current_valid_actions.push_back(a);
-                    }
-                    //get the corresponding stack, action, and term summaries, and apply dropout if needed
-                    Expression stack_summary = p_this->stack_lstm.back();
-                    Expression action_summary = p_this->action_lstm.back();
-                    Expression term_summary = p_this->term_lstm.back();
-                    if (apply_dropout) {
-                        stack_summary = dropout(stack_summary, DROPOUT);
-                        action_summary = dropout(action_summary, DROPOUT);
-                        term_summary = dropout(term_summary, DROPOUT);
-                    }
-
-                    Expression p_t = affine_transform({pbias, S, stack_summary, A, action_summary, T, term_summary});
-                    Expression nlp_t = rectify(p_t);
-                    Expression r_t = affine_transform({abias, p2a, nlp_t});
-                    //action distribution expression over the current valid actions
-                    Expression adiste = log_softmax(r_t, current_valid_actions);
-
-                    //iterate through the current valid actions and add them to the fringe
-                    for(auto action : current_valid_actions){
-                        const string& a_string = adict.convert(action);
-                        char a_char = a_string[0];
-                        double new_score = p_this->score + as_scalar(pick(adiste, action).value());
-                        unsigned wordid = 0;
-                        // class factored softmax if we're doing generation
-                        wordid = sent.raw[w_index];
-                        if (a_char == 'S'){
-                            new_score += as_scalar((-cfsm->neg_log_softmax(nlp_t, wordid)).value());}
-                        ParserStateAction* p_state_action = new ParserStateAction(p_this, action, a_char, wordid, new_score,  fringe.size());
-                        fringe.push_back(p_state_action);
-                    }
+            cerr << "ITER\n";
+            for (int i = 0; i < num_particles; i++) {
+                ParserState *particle = particles[i];
+                //get the possible valid actions
+                vector<unsigned> current_valid_actions;
+                for (auto a: possible_actions) {
+                    if (IsActionForbidden_Generative(adict.convert(a), particle->prev_a, particle->terms.size(),
+                                                     particle->stack.size(), particle->nopen_parens))
+                        continue;
+                    current_valid_actions.push_back(a);
                 }
-                // sort all parser states in the fringe
-                prune(fringe, fringe.size());
-                unsigned fast_track_count = 0;
-                int cut = max<int>((int)fringe.size()-beam_size, 0);
-
-
-                vector<ParserState*> pq_this_new;
-                //iterate through the fringe
-                for(int k = fringe.size()-1; k >= 0; k--){
-                    //if the item is above the cut
-                    if(k >= cut){
-                        ParserState* newstate = fringe[k]->applyAction(hg, cbias, cW, p_a, p_w, p_nt, p_ntup, apply_dropout);
-                        //if came by lexical action, then add it to possible next actions
-                        if(fringe[k]->a_char == 'S'){
-                            pq_next.push_back(newstate);
-                            //otherwise, structural. If action is reduce, make sure it's possible
-                        }else if (fringe[k]->a_char == 'R'){
-                            int i = newstate->is_open_paren.size() - 1; //get the last thing on the stack
-                            while(newstate->is_open_paren[i] < 0) { --i; }
-                            if(i>=0){
-                                pq_this_new.push_back(newstate);
-                            }else{
-                                need_to_delete.insert(newstate);}
-                            // append structural actions to the current state.
-                        }else{
-                            pq_this_new.push_back(newstate);
-                        }
-                        //if it's not above the cut and it's a lexical action, only add if we're fast-tracking
-                    } else {
-                        if(fringe[k]->a_char == 'S' && fast_track_count < fast_track_size){
-                            ParserState* newstate = fringe[k]->applyAction(hg, cbias, cW, p_a, p_w, p_nt, p_ntup, apply_dropout);
-                            pq_next.push_back(newstate);
-                            fast_track_count += 1;
-                        }
-                    }
+                //get the stack, action, and term summaries from the LSTMs
+                Expression stack_summary = particle->stack_lstm.back();
+                Expression action_summary = particle->action_lstm.back();
+                Expression term_summary = particle->term_lstm.back();
+                if (apply_dropout) {
+                    stack_summary = dropout(stack_summary, DROPOUT);
+                    action_summary = dropout(action_summary, DROPOUT);
+                    term_summary = dropout(term_summary, DROPOUT);
                 }
 
-                //clear the fringe and update the current action queue
-                for (ParserStateAction* psa: fringe) {delete psa;}
-                fringe.clear();
-                fringe.shrink_to_fit();
-                for (ParserState* ps: pq_this) {delete ps;}
-                pq_this.clear();
-                pq_this.shrink_to_fit();
-                for (auto p_new : pq_this_new) {
-                    pq_this.push_back(p_new);
+                Expression p_t = affine_transform({pbias, S, stack_summary, A, action_summary, T, term_summary});
+                Expression nlp_t = rectify(p_t);
+                Expression r_t = affine_transform({abias, p2a, nlp_t});
+                //action distribution expression over the current valid actions
+                Expression adiste = log_softmax(r_t, current_valid_actions);
+
+                //iterate through the current valid actions and add them to the fringe
+                double total = 0;
+                vector<double> choices;
+                for (int i = 0; i < current_valid_actions.size(); i++) {
+                    const string &a_string = adict.convert(current_valid_actions[i]);
+                    total += exp(as_scalar(pick(adiste, current_valid_actions[i]).value()));
+                    choices.push_back(total);
+                    cerr << adict.convert(current_valid_actions[i]) << " " << exp(as_scalar(pick(adiste, current_valid_actions[i]).value())) << endl;
                 }
-                pq_this_new.clear();
-                pq_this_new.shrink_to_fit();
-
-                int delcount = 0;
-                for (ParserState* ps: need_to_delete) {delete ps;delcount++;}
-                need_to_delete.clear();
-            }
-
-            // add parser state pointers from pq_next to need_to_delete
-            for (auto parser_state : pq_next){
-                need_to_delete.insert(parser_state);
-            }
-
-            // sort and prune parser states according to their forward probs from low to high, and then print a list of parses
-            prune(pq_next, word_beam_size);
-            cerr << "list of partial parses:" << endl;
-            unsigned beam_index = 1;
-            for(auto parser_state : pq_next){
-                cerr << beam_index << " " << parser_state->score << " ";
-                beam_index++;
-                unsigned shift_count = 0;
-                for (auto action : parser_state->results){
-                    const string& a = adict.convert(action);
-                    if (a[0] == 'R') cerr << ")";
-                    if (a[0] == 'N') {
-                        int nt = action2NTindex[action];
-                        cerr << " (" << ntermdict.convert(nt);
-                    }
-                    if (a[0] == 'S'){
-                        cerr << " " << termdict.convert(sent.raw[shift_count]);
-                        shift_count++;
+                float random = (float) rand() / RAND_MAX;
+                int action;
+                assert(choices.size() == current_valid_actions.size());
+                for (int i = 0; i < choices.size(); i++) {
+                    if (random <= choices[i]) {
+                        cerr << random << " " << choices[i] << " " << current_valid_actions[i] << adict.convert(current_valid_actions[i]) << endl;
+                        action = current_valid_actions[i];
+                        break;
                     }
                 }
-                cerr << "\n";
             }
-
-            //clear the current states, only need the next ones
-            for (ParserState* ps: pq_this) {delete ps;}
-            pq_this.clear();
-            pq_this.shrink_to_fit();
-
-            double marginal_prob = 0;
-            for (auto ps : pq_next){
-                marginal_prob += exp(ps->score);
-            }
-            //get the log probabilities, and update pq_this
-            log_probs.push_back(-log2(marginal_prob));
-            for (auto ps : pq_next){
-                ParserState* p_new = new ParserState();
-                *p_new = *ps;
-                pq_this.push_back(p_new);
-            }
-            int delcount = 0;
-            for (ParserState* ps: need_to_delete) {delete ps; delcount++;}
-            need_to_delete.clear();
         }
+//                for(auto action : current_valid_actions){
+//                    const string& a_string = adict.convert(action);
+//                    total += exp(as_scalar(pick(adiste, action).value()));
+//                    //cerr << a_string << exp(as_scalar(pick(adiste, action).value())) << as_scalar(pick(adiste, action).value())<< endl;
+//                    char a_char = a_string[0];
+//                    double new_score = particle->score + as_scalar(pick(adiste, action).value());
+//                        unsigned wordid = 0;
+//                        // class factored softmax if we're doing generation
+//                        wordid = sent.raw[w_index];
+//                        if (a_char == 'S'){
+//                            new_score += as_scalar((-cfsm->neg_log_softmax(nlp_t, wordid)).value());}
+//                        ParserStateAction* p_state_action = new ParserStateAction(p_this, action, a_char, wordid, new_score,  fringe.size());
+//                        fringe.push_back(p_state_action);
+//                    }
+//                cerr << total << endl;
+//                cerr << (float) rand()/RAND_MAX << endl;
+
+//            }
+//        }
+
+        //iterate through the sentence
+//        for (unsigned w_index = 0; w_index < sent.size(); ++w_index) {
+//            cerr << "Word index: " << w_index << " " << termdict.convert(sent.raw[w_index]) << "; thiswords size: " << pq_this.size() << endl;
+//            vector<ParserState*> pq_next;
+//
+//            //while the beam isn't full, expand it
+//            while (pq_next.size() < beam_size){
+//                vector<ParserStateAction*> fringe;
+//                // iterate through all parser states in the input beam
+//                for (auto p_this : pq_this){
+//                    assert (p_this->stack.size() == p_this->stack_content.size());
+//                    //get all current valid actions at the parser state
+//                    vector<unsigned> current_valid_actions;
+//                    for (auto a: possible_actions) {
+//                        if (IsActionForbidden_Generative(adict.convert(a), p_this->prev_a, p_this->terms.size(), p_this->stack.size(), p_this->nopen_parens))
+//                            continue;
+//                        current_valid_actions.push_back(a);
+//                    }
+//                    //get the corresponding stack, action, and term summaries, and apply dropout if needed
+//                    Expression stack_summary = p_this->stack_lstm.back();
+//                    Expression action_summary = p_this->action_lstm.back();
+//                    Expression term_summary = p_this->term_lstm.back();
+//                    if (apply_dropout) {
+//                        stack_summary = dropout(stack_summary, DROPOUT);
+//                        action_summary = dropout(action_summary, DROPOUT);
+//                        term_summary = dropout(term_summary, DROPOUT);
+//                    }
+//
+//                    Expression p_t = affine_transform({pbias, S, stack_summary, A, action_summary, T, term_summary});
+//                    Expression nlp_t = rectify(p_t);
+//                    Expression r_t = affine_transform({abias, p2a, nlp_t});
+//                    //action distribution expression over the current valid actions
+//                    Expression adiste = log_softmax(r_t, current_valid_actions);
+//
+//                    //iterate through the current valid actions and add them to the fringe
+//                    for(auto action : current_valid_actions){
+//                        const string& a_string = adict.convert(action);
+//                        char a_char = a_string[0];
+//                        double new_score = p_this->score + as_scalar(pick(adiste, action).value());
+//                        unsigned wordid = 0;
+//                        // class factored softmax if we're doing generation
+//                        wordid = sent.raw[w_index];
+//                        if (a_char == 'S'){
+//                            new_score += as_scalar((-cfsm->neg_log_softmax(nlp_t, wordid)).value());}
+//                        ParserStateAction* p_state_action = new ParserStateAction(p_this, action, a_char, wordid, new_score,  fringe.size());
+//                        fringe.push_back(p_state_action);
+//                    }
+//                }
+//                // sort all parser states in the fringe
+//                prune(fringe, fringe.size());
+//                unsigned fast_track_count = 0;
+//                int cut = max<int>((int)fringe.size()-beam_size, 0);
+//
+//
+//                vector<ParserState*> pq_this_new;
+//                //iterate through the fringe
+//                for(int k = fringe.size()-1; k >= 0; k--){
+//                    //if the item is above the cut
+//                    if(k >= cut){
+//                        ParserState* newstate = fringe[k]->applyAction(hg, cbias, cW, p_a, p_w, p_nt, p_ntup, apply_dropout);
+//                        //if came by lexical action, then add it to possible next actions
+//                        if(fringe[k]->a_char == 'S'){
+//                            pq_next.push_back(newstate);
+//                            //otherwise, structural. If action is reduce, make sure it's possible
+//                        }else if (fringe[k]->a_char == 'R'){
+//                            int i = newstate->is_open_paren.size() - 1; //get the last thing on the stack
+//                            while(newstate->is_open_paren[i] < 0) { --i; }
+//                            if(i>=0){
+//                                pq_this_new.push_back(newstate);
+//                            }else{
+//                                need_to_delete.insert(newstate);}
+//                            // append structural actions to the current state.
+//                        }else{
+//                            pq_this_new.push_back(newstate);
+//                        }
+//                        //if it's not above the cut and it's a lexical action, only add if we're fast-tracking
+//                    } else {
+//                        if(fringe[k]->a_char == 'S' && fast_track_count < fast_track_size){
+//                            ParserState* newstate = fringe[k]->applyAction(hg, cbias, cW, p_a, p_w, p_nt, p_ntup, apply_dropout);
+//                            pq_next.push_back(newstate);
+//                            fast_track_count += 1;
+//                        }
+//                    }
+//                }
+//
+//                //clear the fringe and update the current action queue
+//                for (ParserStateAction* psa: fringe) {delete psa;}
+//                fringe.clear();
+//                fringe.shrink_to_fit();
+//                for (ParserState* ps: pq_this) {delete ps;}
+//                pq_this.clear();
+//                pq_this.shrink_to_fit();
+//                for (auto p_new : pq_this_new) {
+//                    pq_this.push_back(p_new);
+//                }
+//                pq_this_new.clear();
+//                pq_this_new.shrink_to_fit();
+//
+//                int delcount = 0;
+//                for (ParserState* ps: need_to_delete) {delete ps;delcount++;}
+//                need_to_delete.clear();
+//            }
+//
+//            // add parser state pointers from pq_next to need_to_delete
+//            for (auto parser_state : pq_next){
+//                need_to_delete.insert(parser_state);
+//            }
+//
+//            // sort and prune parser states according to their forward probs from low to high, and then print a list of parses
+//            prune(pq_next, word_beam_size);
+//            cerr << "list of partial parses:" << endl;
+//            unsigned beam_index = 1;
+//            for(auto parser_state : pq_next){
+//                cerr << beam_index << " " << parser_state->score << " ";
+//                beam_index++;
+//                unsigned shift_count = 0;
+//                for (auto action : parser_state->results){
+//                    const string& a = adict.convert(action);
+//                    if (a[0] == 'R') cerr << ")";
+//                    if (a[0] == 'N') {
+//                        int nt = action2NTindex[action];
+//                        cerr << " (" << ntermdict.convert(nt);
+//                    }
+//                    if (a[0] == 'S'){
+//                        cerr << " " << termdict.convert(sent.raw[shift_count]);
+//                        shift_count++;
+//                    }
+//                }
+//                cerr << "\n";
+//            }
+//
+//            //clear the current states, only need the next ones
+//            for (ParserState* ps: pq_this) {delete ps;}
+//            pq_this.clear();
+//            pq_this.shrink_to_fit();
+//
+//            double marginal_prob = 0;
+//            for (auto ps : pq_next){
+//                marginal_prob += exp(ps->score);
+//            }
+//            //get the log probabilities, and update pq_this
+//            log_probs.push_back(-log2(marginal_prob));
+//            for (auto ps : pq_next){
+//                ParserState* p_new = new ParserState();
+//                *p_new = *ps;
+//                pq_this.push_back(p_new);
+//            }
+//            int delcount = 0;
+//            for (ParserState* ps: need_to_delete) {delete ps; delcount++;}
+//            need_to_delete.clear();
+//        }
 
         //calculate surprisals
         for (unsigned k = 0; k < log_probs.size(); k++){
@@ -1175,8 +1241,8 @@ vector<double> log_prob_parser_particle(ComputationGraph* hg,
             cerr << termdict.convert(sent.raw[k])  << "\t" << surprisals[k] << endl;
         }
         //clear the queue and return the surprisals
-        for (ParserState* ps: pq_this) {delete ps;}
-        pq_this.clear();
+//        for (ParserState* ps: pq_this) {delete ps;}
+//        pq_this.clear();
         return surprisals;
     }
 };
@@ -1484,8 +1550,7 @@ int main(int argc, char** argv) {
         ComputationGraph hg;
         vector<double> surprisals;
         //TODO: add particle filtering option here
-        surprisals = parser.log_prob_parser_particle(&hg, sentence, &right, BEAM_SIZE, FASTTRACK_BEAM_SIZE,
-                                                     WORD_BEAM_SIZE, false);
+        surprisals = parser.log_prob_parser_particle(&hg, sentence, &right, 10, false);
         //write out the surprisals
         for(unsigned k = 0; k < surprisals.size(); ++k){
             f << (sii + 1) << "\t" << (k + 1) << "\t" << termdict.convert(sentence.raw[k]) << "\t" << surprisals[k] <<"\n";
