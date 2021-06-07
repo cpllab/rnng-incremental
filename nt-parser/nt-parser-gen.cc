@@ -653,6 +653,7 @@ vector<double> log_prob_parser_beam(ComputationGraph* hg,
                                     bool is_evaluation) {
     //a vector to store the results in
     vector<unsigned> results;
+    //store the stack in a vector, and put a dummy symbol on to begin
     vector<string> stack_content;
     stack_content.push_back("ROOT_GUARD");
     const bool sample = sent.size() == 0;
@@ -660,7 +661,6 @@ vector<double> log_prob_parser_beam(ComputationGraph* hg,
     assert(sample || build_training_graph);
     //check if we're applying dropout and apply it if we are
     bool apply_dropout = (DROPOUT && !is_evaluation && !sample);
-    //if (sample) apply_dropout = false;
     if (apply_dropout) {
       stack_lstm.set_dropout(DROPOUT);
       term_lstm.set_dropout(DROPOUT);
@@ -697,6 +697,8 @@ vector<double> log_prob_parser_beam(ComputationGraph* hg,
     Expression action_start = parameter(*hg, p_action_start);
     Expression cW = parameter(*hg, p_cW);
 
+    //TODO: what's happening here?
+    //initialize the action and term lstms (?)
     action_lstm.add_input(action_start);
     vector<Expression> terms(1, lookup(*hg, p_w, kSOS));
     term_lstm.add_input(terms.back());
@@ -707,8 +709,7 @@ vector<double> log_prob_parser_beam(ComputationGraph* hg,
     stack_lstm.add_input(stack.back());
     vector<int> is_open_paren; // -1 if no nonterminal has a parenthesis open, otherwise index of NT
     is_open_paren.push_back(-1); // corresponds to dummy symbol
-    string rootword;
-    int nopen_parens = 0;
+    int nopen_parens = 0; // there are no open parentheses, and the first action is a dummy
     char prev_a = '0';
 
     //create a new parser state object and assign the relevant values
@@ -783,8 +784,8 @@ vector<double> log_prob_parser_beam(ComputationGraph* hg,
 	        unsigned wordid = 0;
 	        // class factored softmax if we're doing generation
 	        wordid = sent.raw[w_index];
-	        if (a_char == 'S')
-	            new_score += as_scalar((-cfsm->neg_log_softmax(nlp_t, wordid)).value());
+	        if (a_char == 'S'){
+	            new_score += as_scalar((-cfsm->neg_log_softmax(nlp_t, wordid)).value());}
 	        ParserStateAction* p_state_action = new ParserStateAction(p_this, action, a_char, wordid, new_score,  fringe.size());
 	        fringe.push_back(p_state_action);
           }
@@ -881,7 +882,7 @@ vector<double> log_prob_parser_beam(ComputationGraph* hg,
       for (auto ps : pq_next){
         marginal_prob += exp(ps->score);
       }
-      //get the log probabilities
+      //get the log probabilities, and update pq_this
       log_probs.push_back(-log2(marginal_prob));
       for (auto ps : pq_next){
         ParserState* p_new = new ParserState();
@@ -911,6 +912,7 @@ vector<double> log_prob_parser_beam(ComputationGraph* hg,
     return surprisals;
     }
 };
+
 
 void signal_callback_handler(int /* signum */) {
   if (requested_stop) {
