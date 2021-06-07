@@ -1,0 +1,15 @@
+dev.24
+gardenpathing_verb_ambiguity_sentences.txt
+ntparse_gen_D0.3_2_256_256_16_256-pid20681.params
+surprisals_garden.txt
+test.23
+testing_raw_sentences.txt
+train.02-21
+train_dict.txt
+training_oracle.txt
+unkified_garden_path.txt
+eigen
+dynet
+EVALB
+build
+.idea

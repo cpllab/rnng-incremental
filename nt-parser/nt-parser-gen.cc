@@ -926,39 +926,38 @@ void signal_callback_handler(int /* signum */) {
   requested_stop = true;
 }
 
+// TODO: dynet is leaking memory everywhere and taking up a ton of RAM, can we do anything about this?
 int main(int argc, char** argv) {
-  dynet::initialize(argc, argv);
+    dynet::initialize(argc, argv); //initialize dynet
+    //initialize the command-line arguments into a map from the variables to their values
+    po::variables_map conf;
+    InitCommandLine(argc, argv, &conf);
+    //clusters are need for computational efficiency
+    if (!conf.count("clusters")) {
+        cerr << "Please specify vocabulary clustering with --clusters FILE when training generative model\n";
+        return 1;
+    }
+    //need dev data if we're training the model
+    if (conf.count("train") && conf.count("dev_data") == 0) {
+        cerr << "You specified --train but did not specify --dev_data FILE\n";
+        return 1;
+    }
+    if (conf.count("dropout")) DROPOUT = conf["dropout"].as<float>();
+    LAYERS = conf["layers"].as<unsigned>();
+    INPUT_DIM = conf["input_dim"].as<unsigned>();
+    PRETRAINED_DIM = conf["pretrained_dim"].as<unsigned>();
+    HIDDEN_DIM = conf["hidden_dim"].as<unsigned>();
+    ACTION_DIM = conf["action_dim"].as<unsigned>();
+    LSTM_INPUT_DIM = conf["lstm_input_dim"].as<unsigned>();
+    BEAM_SIZE = conf["beam_size"].as<unsigned>();
+    FASTTRACK_BEAM_SIZE = conf["fasttrack_beam_size"].as<unsigned>();
+    WORD_BEAM_SIZE = conf["word_beam_size"].as<unsigned>();
+    LEARNING_RATE = conf["lr"].as<float>();
 
-  cerr << "COMMAND LINE:"; 
-  for (unsigned i = 0; i < static_cast<unsigned>(argc); ++i) cerr << ' ' << argv[i];
-  cerr << endl;
-  unsigned status_every_i_iterations = 100;
 
-  po::variables_map conf;
-  InitCommandLine(argc, argv, &conf);
-  if (conf.count("clusters") == 0) {
-    cerr << "Please specify vocabulary clustering with --clusters FILE when training generative model\n";
-    return 1;
-  }
-  if (conf.count("dropout"))
-    DROPOUT = conf["dropout"].as<float>();
-  LAYERS = conf["layers"].as<unsigned>();
-  INPUT_DIM = conf["input_dim"].as<unsigned>();
-  PRETRAINED_DIM = conf["pretrained_dim"].as<unsigned>();
-  HIDDEN_DIM = conf["hidden_dim"].as<unsigned>();
-  ACTION_DIM = conf["action_dim"].as<unsigned>();
-  LSTM_INPUT_DIM = conf["lstm_input_dim"].as<unsigned>();
-  BEAM_SIZE = conf["beam_size"].as<unsigned>();
-  FASTTRACK_BEAM_SIZE = conf["fasttrack_beam_size"].as<unsigned>();
-  WORD_BEAM_SIZE = conf["word_beam_size"].as<unsigned>();
-  LEARNING_RATE = conf["lr"].as<float>();
 
-  if (conf.count("train") && conf.count("dev_data") == 0) {
-    cerr << "You specified --train but did not specify --dev_data FILE\n";
-    return 1;
-  }
-  ostringstream os;
-  os << "ntparse_gen"
+    ostringstream os;
+    os << "ntparse_gen"
      << "_D" << DROPOUT
      << '_' << LAYERS
      << '_' << INPUT_DIM
@@ -966,21 +965,21 @@ int main(int argc, char** argv) {
      << '_' << ACTION_DIM
      << '_' << LSTM_INPUT_DIM
      << "-pid" << getpid() << ".params";
-  const string fname = os.str();
-  cerr << "PARAMETER FILE: " << fname << endl;
-  bool softlinkCreated = false;
+    const string fname = os.str();
+    cerr << "PARAMETER FILE: " << fname << endl;
+    bool softlinkCreated = false;
+    return -1;
 
   kSOS = termdict.convert("<s>");
   // Model model;
   ParameterCollection model;
   cfsm = new ClassFactoredSoftmaxBuilder(HIDDEN_DIM, conf["clusters"].as<string>(), termdict, model);
-
   parser::TopDownOracleGen corpus(&termdict, &adict, &posdict, &ntermdict);
   parser::TopDownOracleGen dev_corpus(&termdict, &adict, &posdict, &ntermdict);
   parser::TopDownOracleGen2 test_corpus(&termdict, &adict, &posdict, &ntermdict);
   parser::TopDownOracleGen eval_corpus(&termdict, &adict, &posdict, &ntermdict);
-  corpus.load_oracle(conf["training_data"].as<string>());
 
+  corpus.load_oracle(conf["training_data"].as<string>());
   if (conf.count("words"))
     parser::ReadEmbeddings_word2vec(conf["words"].as<string>(), &termdict, &pretrained);
 
@@ -1038,7 +1037,8 @@ int main(int argc, char** argv) {
     //sgd.eta = 0.01;
     //sgd.eta0 = 0.01;
     //MomentumSGDTrainer sgd(&model);
-
+    //how often to log the status of training
+    unsigned status_every_i_iterations = 100;
     double eta_decay = 0.08;
     //sgd.eta_decay = 0.05;
     vector<unsigned> order(corpus.sents.size());
