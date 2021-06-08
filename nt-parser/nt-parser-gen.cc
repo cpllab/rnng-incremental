@@ -1090,7 +1090,7 @@ vector<double> log_prob_parser_particle(ComputationGraph* hg,
                     if (random <= partial_total){ resampled.push_back(particles[i]); break;}
                 }
             }
-            surprisals.push_back(log(1/total));
+            surprisals.push_back(log(num_particles/total));
             assert(particles.size() == resampled.size());
             particles.clear();
             for (auto re : resampled){
