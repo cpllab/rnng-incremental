@@ -9,17 +9,14 @@ for w_i in sentence:
 		//this is meant to get us up to a shift action because only there can we use cfsm, but I'm not sure it's the best way to do it
 		while (p_i+1) is not a shift action: 
 			sample p_i+2 from P(p_i+2 | p_i+1)
-			p_i+1 = p_i+2
-		reweight p_i+1 based on P(w_i+1 | p_i+1) using cfsm
+			p_i+1 = p_i+2 
+		reweight p_i+1 based on P(w_i+1 | p_i+1) using cfsm (do we only consider this or the product?)
 		new_particles.add(p_i+1)
 	resampled_particles = {}
 	for i in range(num_particles):
 		sample from new_particles and append result to resampled_particles 
-	particles = new_particles
+	particles = resampled_particles
 
-
-initialization -- do we need to do anything special there
-repeated particles ok? I think we have to have them 
-
+	
 
 

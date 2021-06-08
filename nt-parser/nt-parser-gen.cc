@@ -976,7 +976,7 @@ vector<double> log_prob_parser_particle(ComputationGraph* hg,
         is_open_paren.push_back(-1); // corresponds to dummy symbol
         int nopen_parens = 0; // there are no open parentheses, and the first action is a dummy
         char prev_a = '0';
-
+        map<ParserState*, int> particles_map;
         vector<ParserState*> particles;
         for (int i = 0; i < num_particles; i++){
             ParserState* currstate = new ParserState();
@@ -1010,23 +1010,10 @@ vector<double> log_prob_parser_particle(ComputationGraph* hg,
         for (unsigned w_index = 0; w_index < sent.size(); ++w_index) {
             cerr << w_index << " ITER\n\n";
             for (int y = 0; y < num_particles; y++) {
-                //get the possible valid actions
+                //we want to repeatedly sample until we reach a shift operation
                 char a_char = '0';
                 while (a_char != 'S'){
-//                    int shift_count = 0;
-//                    for (auto action : particles[y]->results){
-//                        const string& a = adict.convert(action);
-//                        if (a[0] == 'R') cerr << ")";
-//                        if (a[0] == 'N') {
-//                            int nt = action2NTindex[action];
-//                            cerr << " (" << ntermdict.convert(nt);
-//                        }
-//                        if (a[0] == 'S'){
-//                            cerr << " " << termdict.convert(sent.raw[shift_count]);
-//                            shift_count++;
-//                        }
-//                    }
-//                    cerr << "\n";
+                    //get the valid actions for the particle
                     vector<unsigned> current_valid_actions;
                     for (auto a: possible_actions) {
                         if (IsActionForbidden_Generative(adict.convert(a), particles[y]->prev_a, particles[y]->terms.size(),
@@ -1044,39 +1031,34 @@ vector<double> log_prob_parser_particle(ComputationGraph* hg,
                         term_summary = dropout(term_summary, DROPOUT);
                     }
 
+                    //get the action distribution expression over the current valid actions
                     Expression p_t = affine_transform({pbias, S, stack_summary, A, action_summary, T, term_summary});
                     Expression nlp_t = rectify(p_t);
                     Expression r_t = affine_transform({abias, p2a, nlp_t});
-                    //action distribution expression over the current valid actions
                     Expression adiste = log_softmax(r_t, current_valid_actions);
 
-                    //select an action to pursue by sampling from the distribution of actions
-                    double total = 0;
-                    vector<double> choices;
-                    for (int i = 0; i < current_valid_actions.size(); i++) {
-                        const string &a_string = adict.convert(current_valid_actions[i]);
+                    //select an action to pursue by sampling from the distribution of actions using random number generation
+                    float random = rand01();
+                    float total = 0;
+                    int action = -1;
+                    for (unsigned i = 0; i < current_valid_actions.size(); i++){
                         total += exp(as_scalar(pick(adiste, current_valid_actions[i]).value()));
-                        choices.push_back(total);
-    //                    cerr << adict.convert(current_valid_actions[i]) << " " << exp(as_scalar(pick(adiste, current_valid_actions[i]).value())) << endl;
+                        if (random <= total){
+                            action = current_valid_actions[i]; break;
+                       }
                     }
-                    float random = (float) rand() / RAND_MAX;
-                    int action;
-                    assert(choices.size() == current_valid_actions.size());
-                    for (int i = 0; i < choices.size(); i++) {
-                        if (random <= choices[i]) {
-                            // cerr << random << " " << choices[i] << " " << current_valid_actions[i] << adict.convert(current_valid_actions[i]) << endl;
-                            action = current_valid_actions[i];
-                            break;
-                        }
-                    }
-                    double new_score = particles[y]->score + as_scalar(pick(adiste, action).value());
-                    unsigned wordid = sent.raw[w_index];
+                    // set the character to correspond to the action
                     a_char = adict.convert(action)[0];
+                    double new_score = 0;
+                    unsigned wordid = sent.raw[w_index];
+                    //re=weight by P(w_t|y)
                     if (a_char == 'S'){
-                        new_score += as_scalar((-cfsm->neg_log_softmax(nlp_t, wordid)).value());}
+                        new_score = as_scalar((-cfsm->neg_log_softmax(nlp_t, wordid)).value());}
                     ParserStateAction* p_state_action = new ParserStateAction(particles[y], action, a_char, wordid, new_score, 0);
                     ParserState* newstate = p_state_action->applyAction(hg, cbias, cW, p_a, p_w, p_nt, p_ntup, apply_dropout);
+                    //update the particle so that we can proceed with parsing actions if we haven't yet reached a shift
                     particles[y] = newstate;
+                    assert(particles[y]->log_prob_additional_parse == new_score);
                 }
                 int shift_count = 0;
                 for (auto action : particles[y]->results){
@@ -1096,31 +1078,22 @@ vector<double> log_prob_parser_particle(ComputationGraph* hg,
             }
             vector<ParserState*> resampled;
             float total = 0;
-            vector<float> probs;
-            for (int y = 0; y < num_particles; y++){
-                cerr << total << endl;
-                total += exp(particles[y]->log_prob_additional_parse);
-                probs.push_back(total);
+            for (unsigned i = 0; i < num_particles; i++){
+                total += exp(particles[i]->log_prob_additional_parse);
             }
-            //cerr << "TOTAL" << total << endl;
-            cerr << probs.size() << particles.size();
-            assert(probs.size() == particles.size());
-            for (int y = 0; y < num_particles; y++){
-//                cerr << probs[y] << endl;
-                probs[y] = probs[y]/total;
-//                cerr << probs[y]<< endl;
-            }
-            cerr << endl;
-            for (int i = 0; i  < num_particles; i ++){
-                float random = (float) rand() / RAND_MAX;
-                for (int j = 0; j < probs.size(); j++){
-                    if (random <= probs[j]){
-                        resampled.push_back(particles[j]);
+            for (int p = 0; p < num_particles; p++){
+                float partial_total = 0;
+                float random = rand01();
+                for (unsigned i = 0; i < num_particles; i++){
+                    partial_total += exp(particles[i]->log_prob_additional_parse)/total;
+                    if (random <= partial_total){
+                        resampled.push_back(particles[i]);
                         break;
                     }
                 }
             }
-//            particles.clear();
+            assert(particles.size() == resampled.size());
+            //            particles.clear();
 //            for (auto re : resampled){
 //                particles.push_back(re);
 //            }
@@ -1147,6 +1120,7 @@ vector<double> log_prob_parser_particle(ComputationGraph* hg,
 //        pq_this.clear();
         return surprisals;
     }
+
 };
 
 
