@@ -1043,9 +1043,7 @@ vector<double> log_prob_parser_particle(ComputationGraph* hg,
                     int action = -1;
                     for (unsigned i = 0; i < current_valid_actions.size(); i++){
                         total += exp(as_scalar(pick(adiste, current_valid_actions[i]).value()));
-                        if (random <= total){
-                            action = current_valid_actions[i]; break;
-                       }
+                        if (random <= total){ action = current_valid_actions[i]; break; }
                     }
                     // set the character to correspond to the action
                     a_char = adict.convert(action)[0];
@@ -1076,48 +1074,47 @@ vector<double> log_prob_parser_particle(ComputationGraph* hg,
                 cerr << exp(particles[y]->log_prob_additional_parse);
                 cerr << endl;
             }
+            //resample the particles based on the updated weights
             vector<ParserState*> resampled;
+            //get the total for re-normalization
             float total = 0;
             for (unsigned i = 0; i < num_particles; i++){
                 total += exp(particles[i]->log_prob_additional_parse);
             }
+            //sample for each particle by generating a random number between 0 and 1
             for (int p = 0; p < num_particles; p++){
                 float partial_total = 0;
                 float random = rand01();
                 for (unsigned i = 0; i < num_particles; i++){
                     partial_total += exp(particles[i]->log_prob_additional_parse)/total;
-                    if (random <= partial_total){
-                        resampled.push_back(particles[i]);
-                        break;
-                    }
+                    if (random <= partial_total){ resampled.push_back(particles[i]); break;}
                 }
             }
+            surprisals.push_back(log(1/total));
             assert(particles.size() == resampled.size());
-            //            particles.clear();
-//            for (auto re : resampled){
-//                particles.push_back(re);
-//            }
-//            resampled.clear();
-//            cerr << particles.size() << endl;
-            particles = resampled;
-        }
-
-
-        //calculate surprisals
-        for (unsigned k = 0; k < log_probs.size(); k++){
-            if(k == 0){
-                surprisals.push_back(log_probs[k]);
-            }else{
-                surprisals.push_back(log_probs[k] - log_probs[k-1]);
+            particles.clear();
+            for (auto re : resampled){
+                particles.push_back(re);
             }
+            resampled.clear();
         }
-        // print words and surprisals
-        for (unsigned k = 0; k < surprisals.size(); k++){
-            cerr << termdict.convert(sent.raw[k])  << "\t" << surprisals[k] << endl;
-        }
-        //clear the queue and return the surprisals
-//        for (ParserState* ps: pq_this) {delete ps;}
-//        pq_this.clear();
+
+
+//        //calculate surprisals
+//        for (unsigned k = 0; k < log_probs.size(); k++){
+//            if(k == 0){
+//                surprisals.push_back(log_probs[k]);
+//            }else{
+//                surprisals.push_back(log_probs[k] - log_probs[k-1]);
+//            }
+//        }
+//        // print words and surprisals
+//        for (unsigned k = 0; k < surprisals.size(); k++){
+//            cerr << termdict.convert(sent.raw[k])  << "\t" << surprisals[k] << endl;
+//        }
+//        //clear the queue and return the surprisals
+////        for (ParserState* ps: pq_this) {delete ps;}
+////        pq_this.clear();
         return surprisals;
     }
 
