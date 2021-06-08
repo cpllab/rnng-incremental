@@ -1008,25 +1008,25 @@ vector<double> log_prob_parser_particle(ComputationGraph* hg,
 
         //iterate through the sentence
         for (unsigned w_index = 0; w_index < sent.size(); ++w_index) {
-            cerr << w_index << "ITER\n";
+            cerr << w_index << " ITER\n\n";
             for (int y = 0; y < num_particles; y++) {
                 //get the possible valid actions
                 char a_char = '0';
                 while (a_char != 'S'){
-                    int shift_count = 0;
-                    for (auto action : particles[y]->results){
-                        const string& a = adict.convert(action);
-                        if (a[0] == 'R') cerr << ")";
-                        if (a[0] == 'N') {
-                            int nt = action2NTindex[action];
-                            cerr << " (" << ntermdict.convert(nt);
-                        }
-                        if (a[0] == 'S'){
-                            cerr << " " << termdict.convert(sent.raw[shift_count]);
-                            shift_count++;
-                        }
-                    }
-                    cerr << "\n";
+//                    int shift_count = 0;
+//                    for (auto action : particles[y]->results){
+//                        const string& a = adict.convert(action);
+//                        if (a[0] == 'R') cerr << ")";
+//                        if (a[0] == 'N') {
+//                            int nt = action2NTindex[action];
+//                            cerr << " (" << ntermdict.convert(nt);
+//                        }
+//                        if (a[0] == 'S'){
+//                            cerr << " " << termdict.convert(sent.raw[shift_count]);
+//                            shift_count++;
+//                        }
+//                    }
+//                    cerr << "\n";
                     vector<unsigned> current_valid_actions;
                     for (auto a: possible_actions) {
                         if (IsActionForbidden_Generative(adict.convert(a), particles[y]->prev_a, particles[y]->terms.size(),
@@ -1091,8 +1091,42 @@ vector<double> log_prob_parser_particle(ComputationGraph* hg,
                         shift_count++;
                     }
                 }
+                cerr << exp(particles[y]->log_prob_additional_parse);
+                cerr << endl;
             }
-
+            vector<ParserState*> resampled;
+            float total = 0;
+            vector<float> probs;
+            for (int y = 0; y < num_particles; y++){
+                cerr << total << endl;
+                total += exp(particles[y]->log_prob_additional_parse);
+                probs.push_back(total);
+            }
+            //cerr << "TOTAL" << total << endl;
+            cerr << probs.size() << particles.size();
+            assert(probs.size() == particles.size());
+            for (int y = 0; y < num_particles; y++){
+//                cerr << probs[y] << endl;
+                probs[y] = probs[y]/total;
+//                cerr << probs[y]<< endl;
+            }
+            cerr << endl;
+            for (int i = 0; i  < num_particles; i ++){
+                float random = (float) rand() / RAND_MAX;
+                for (int j = 0; j < probs.size(); j++){
+                    if (random <= probs[j]){
+                        resampled.push_back(particles[j]);
+                        break;
+                    }
+                }
+            }
+//            particles.clear();
+//            for (auto re : resampled){
+//                particles.push_back(re);
+//            }
+//            resampled.clear();
+//            cerr << particles.size() << endl;
+            particles = resampled;
         }
 
 
