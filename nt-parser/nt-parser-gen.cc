@@ -60,6 +60,7 @@ unsigned VOCAB_SIZE = 0;
 unsigned NT_SIZE = 0;
 float DROPOUT = 0.0f;
 float LEARNING_RATE = 0.1;
+unsigned NUM_PARTICLES = 100;
 std::map<int,int> action2NTindex;  // pass in index of action NT(X), return index of X
 
 using namespace dynet;
@@ -94,6 +95,8 @@ void InitCommandLine(int argc, char** argv, po::variables_map* conf) {
         ("train,t", "Should training be run?")
         ("words,w", po::value<string>(), "Pretrained word embeddings")
         ("beam_size", po::value<unsigned>()->default_value(100), "beam size")
+        ("np", po::value<unsigned>()->default_value(100), "number of particle filters for particle filtering")
+        ("beam", po::value<bool>()->default_value(false), "true if running beam search")
         ("fasttrack_beam_size", po::value<unsigned>()->default_value(5), "fast track beam size")
         ("word_beam_size", po::value<unsigned>()->default_value(10), "word beam size")
         ("lr", po::value<float>()->default_value(0.1), "Learning rate")  
@@ -1008,7 +1011,8 @@ vector<double> log_prob_parser_particle(ComputationGraph* hg,
 
         //iterate through the sentence
         for (unsigned w_index = 0; w_index < sent.size(); ++w_index) {
-            cerr << w_index << " ITER\n\n";
+            cerr << "Current word: " << termdict.convert(sent.raw[w_index]) << " ,index " << w_index << endl;
+            cerr << "List of partial parses: \n";
             for (int y = 0; y < num_particles; y++) {
                 //we want to repeatedly sample until we reach a shift operation
                 char a_char = '0';
@@ -1098,23 +1102,6 @@ vector<double> log_prob_parser_particle(ComputationGraph* hg,
             }
             resampled.clear();
         }
-
-
-//        //calculate surprisals
-//        for (unsigned k = 0; k < log_probs.size(); k++){
-//            if(k == 0){
-//                surprisals.push_back(log_probs[k]);
-//            }else{
-//                surprisals.push_back(log_probs[k] - log_probs[k-1]);
-//            }
-//        }
-//        // print words and surprisals
-//        for (unsigned k = 0; k < surprisals.size(); k++){
-//            cerr << termdict.convert(sent.raw[k])  << "\t" << surprisals[k] << endl;
-//        }
-//        //clear the queue and return the surprisals
-////        for (ParserState* ps: pq_this) {delete ps;}
-////        pq_this.clear();
         return surprisals;
     }
 
@@ -1156,6 +1143,7 @@ int main(int argc, char** argv) {
     FASTTRACK_BEAM_SIZE = conf["fasttrack_beam_size"].as<unsigned>();
     WORD_BEAM_SIZE = conf["word_beam_size"].as<unsigned>();
     LEARNING_RATE = conf["lr"].as<float>();
+    NUM_PARTICLES = conf["np"].as<unsigned>();
 
     //print out the name of the model that will result
     ostringstream os;
@@ -1422,8 +1410,15 @@ int main(int argc, char** argv) {
         const auto& sentence=eval_corpus.sents[sii];
         ComputationGraph hg;
         vector<double> surprisals;
-        //TODO: add particle filtering option here
-        surprisals = parser.log_prob_parser_particle(&hg, sentence, &right, 10, false);
+        bool run_beam = conf["beam"].as<bool>();
+        if (run_beam){
+            cerr << "RUNNING BEAM SEARCH\n";
+            surprisals  = parser.log_prob_parser_beam(&hg, sentence, &right, BEAM_SIZE, FASTTRACK_BEAM_SIZE, WORD_BEAM_SIZE, false);
+        }
+        else {
+            cerr << "RUNNING PARTICLE FILTERING\n";
+            surprisals = parser.log_prob_parser_particle(&hg, sentence, &right, 10, false);
+        }
         //write out the surprisals
         for(unsigned k = 0; k < surprisals.size(); ++k){
             f << (sii + 1) << "\t" << (k + 1) << "\t" << termdict.convert(sentence.raw[k]) << "\t" << surprisals[k] <<"\n";
