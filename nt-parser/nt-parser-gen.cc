@@ -177,6 +177,8 @@ struct ParserBuilder {
     }
   }
 
+
+
 // checks to see if a proposed action is valid in discriminative models
 static bool IsActionForbidden_Generative(const string& a, char prev_a, unsigned tsize, unsigned ssize, unsigned nopen_parens) {
   bool is_shift = (a[0] == 'S' && a[1]=='H');
@@ -549,11 +551,18 @@ struct ParserStateAction {
       p_state->is_open_paren.push_back(nt_index);
     }else if (a_char == 'R'){
       --p_state->nopen_parens;
+//      for (int i = 0; i < p_state->stack_content.size(); i++){
+//          cerr << p_state->stack_content[i] << " ";
+//      }
+//      cerr << endl;
       assert(p_state->stack.size() > 2); // dummy symbol means > 2 (not >= 2)
       assert(p_state->stack_content.size() > 2 && p_state->stack.size() == p_state->stack_content.size());
       // find what paren we are closing
+      cerr << p_state->is_open_paren.size() << endl;
       int i = p_state->is_open_paren.size() - 1; //get the last thing on the stack
-      while(p_state->is_open_paren[i] < 0) { --i; assert(i >= 0); } //iteratively decide whether or not it's a non-terminal
+      while(p_state->is_open_paren[i] < 0) { --i;
+//          cerr << i << " "<< p_state->is_open_paren[i] << endl;
+          assert(i >= 0); } //iteratively decide whether or not it's a non-terminal
       Expression nonterminal = lookup(*hg, p_ntup, p_state->is_open_paren[i]);
       int nchildren = p_state->is_open_paren.size() - i - 1;
       assert(nchildren > 0);
@@ -646,6 +655,28 @@ static void prune(vector<ParserStateAction*>& pq, unsigned k) {
   //}
 }
 
+
+//checks to see if a proposed action is valid in discriminative models
+    bool canDoAction(const string& a, ParserState* p){
+        bool is_shift = (a[0] == 'S' && a[1] == 'H');
+        bool is_reduce = (a[0] == 'R' && a[1]=='E');
+        bool is_nt = (a[0] == 'N');
+        assert(is_shift || is_reduce || is_nt);
+        if (is_reduce){
+            int i = p->is_open_paren.size() -1;
+            while(p->is_open_paren[i] < 0){--i;}
+            if (i < 0) return false;
+        }
+        static const unsigned MAX_OPEN_NTS = 100;
+        if (is_nt && p->nopen_parens >= MAX_OPEN_NTS) return false;
+        if (p->stack.size() == 1){
+            if (!is_nt) return false;
+            return true;
+        }
+        if (is_reduce && p->prev_a == 'N') return false;
+        return true;
+    }
+
 /**Probabilistic parsing using word-synchronous beam-search*/
 vector<double> log_prob_parser_beam(ComputationGraph* hg,
                                     const parser::Sentence& sent,
@@ -700,7 +731,6 @@ vector<double> log_prob_parser_beam(ComputationGraph* hg,
     Expression action_start = parameter(*hg, p_action_start);
     Expression cW = parameter(*hg, p_cW);
 
-    //TODO: what's happening here?
     //initialize the action and term lstms (?)
     action_lstm.add_input(action_start);
     vector<Expression> terms(1, lookup(*hg, p_w, kSOS));
@@ -759,9 +789,9 @@ vector<double> log_prob_parser_beam(ComputationGraph* hg,
           //get all current valid actions at the parser state
           vector<unsigned> current_valid_actions;
           for (auto a: possible_actions) {
-            if (IsActionForbidden_Generative(adict.convert(a), p_this->prev_a, p_this->terms.size(), p_this->stack.size(), p_this->nopen_parens))
-              continue;
-            current_valid_actions.push_back(a);
+//            if (IsActionForbidden_Generative(adict.convert(a), p_this->prev_a, p_this->terms.size(), p_this->stack.size(), p_this->nopen_parens))
+//              continue;
+            if (canDoAction(adict.convert(a), p_this)) current_valid_actions.push_back(a);
           }
           //get the corresponding stack, action, and term summaries, and apply dropout if needed
           Expression stack_summary = p_this->stack_lstm.back();
@@ -809,14 +839,14 @@ vector<double> log_prob_parser_beam(ComputationGraph* hg,
 	            if(fringe[k]->a_char == 'S'){
                     pq_next.push_back(newstate);
                 //otherwise, structural. If action is reduce, make sure it's possible
-	            }else if (fringe[k]->a_char == 'R'){
-                    int i = newstate->is_open_paren.size() - 1; //get the last thing on the stack
-                    while(newstate->is_open_paren[i] < 0) { --i; }
-                    if(i>=0){
-                        pq_this_new.push_back(newstate);
-                    }else{
-                        need_to_delete.insert(newstate);}
-                // append structural actions to the current state.
+//	            }else if (fringe[k]->a_char == 'R'){
+//                    int i = newstate->is_open_paren.size() - 1; //get the last thing on the stack
+//                    while(newstate->is_open_paren[i] < 0) { --i; }
+//                    if(i>=0){
+//                        pq_this_new.push_back(newstate);
+//                    }else{
+//                        need_to_delete.insert(newstate);}
+//                // append structural actions to the current state.
                 }else{
                     pq_this_new.push_back(newstate);
                 }
@@ -873,7 +903,7 @@ vector<double> log_prob_parser_beam(ComputationGraph* hg,
             shift_count++; 
           }
         }
-        cerr << "\n";    
+        cerr << " " << parser_state->stack.size() << "\n";
       }      
 
       //clear the current states, only need the next ones
@@ -915,21 +945,16 @@ vector<double> log_prob_parser_beam(ComputationGraph* hg,
     return surprisals;
     }
 
+
 vector<double> log_prob_parser_particle(ComputationGraph* hg,
                                         const parser::Sentence& sent,
                                         double *right,
                                         unsigned num_particles,
                                         bool is_evaluation) {
-        //a vector to store the results in
-        vector<unsigned> results;
-        //store the stack in a vector, and put a dummy symbol on to begin
-        vector<string> stack_content;
-        stack_content.push_back("ROOT_GUARD");
-        const bool sample = sent.size() == 0;
-        const bool build_training_graph = true;
-        assert(sample || build_training_graph);
+        //make sure that the sentence isn't empty
+        assert(sent.size() > 0);
         //check if we're applying dropout and apply it if we are
-        bool apply_dropout = (DROPOUT && !is_evaluation && !sample);
+        bool apply_dropout = (DROPOUT && !is_evaluation);
         if (apply_dropout) {
             stack_lstm.set_dropout(DROPOUT);
             term_lstm.set_dropout(DROPOUT);
@@ -965,23 +990,27 @@ vector<double> log_prob_parser_particle(ComputationGraph* hg,
         Expression abias = parameter(*hg, p_abias);
         Expression action_start = parameter(*hg, p_action_start);
         Expression cW = parameter(*hg, p_cW);
-
-        //initialize the action and term lstms (?)
+        //add the inputs to the LSTMs
         action_lstm.add_input(action_start);
-        vector<Expression> terms(1, lookup(*hg, p_w, kSOS));
-        term_lstm.add_input(terms.back());
+        term_lstm.add_input(lookup(*hg, p_w, kSOS));
+        stack_lstm.add_input(parameter(*hg, p_stack_guard));
 
-        vector<Expression> stack;  // variables representing subtree embeddings
-        stack.push_back(parameter(*hg, p_stack_guard));
-        // drive dummy symbol on stack through LSTM
-        stack_lstm.add_input(stack.back());
-        vector<int> is_open_paren; // -1 if no nonterminal has a parenthesis open, otherwise index of NT
-        is_open_paren.push_back(-1); // corresponds to dummy symbol
-        int nopen_parens = 0; // there are no open parentheses, and the first action is a dummy
-        char prev_a = '0';
-        map<ParserState*, int> particles_map;
+        //a vector in which we'll store the particles
         vector<ParserState*> particles;
+        //intialize each particle
         for (int i = 0; i < num_particles; i++){
+            vector<unsigned> results;
+            // -1 if no nonterminal has a parenthesis open, otherwise index of NT
+            vector<int> is_open_paren;
+            is_open_paren.push_back(-1);
+            // variables representing subtree embeddings
+            vector<Expression> stack;
+            //push the stack guard onto the stack
+            stack.push_back(parameter(*hg, p_stack_guard));
+            //initialize the stack and term lstms
+            vector<Expression> terms(1, lookup(*hg, p_w, kSOS));
+            vector<string> stack_content;
+            stack_content.push_back("ROOT_GUARD");
             ParserState* currstate = new ParserState();
             currstate->stack_lstm = stack_lstm;
             currstate->term_lstm = term_lstm;
@@ -995,19 +1024,19 @@ vector<double> log_prob_parser_particle(ComputationGraph* hg,
             currstate->stack_content = stack_content;
             currstate->results = results;
             currstate->score = 0;
-            currstate->nopen_parens = nopen_parens;
-            currstate->prev_a = prev_a;
+            currstate->nopen_parens = 0;
+            currstate->prev_a = '0';
             currstate->fringe_index = 0;
             currstate->log_posterior_parse = 0;
             currstate->log_prob_additional_parse = 0;
             particles.push_back(currstate);
         }
 
-        unordered_set<ParserState*> need_to_delete;
+        //unordered_set<ParserState*> need_to_delete;
 
         //store the surprisals and log probabilities
         vector<double> surprisals;
-        vector<double> log_probs;
+        //vector<double> log_probs;
 
         //iterate through the sentence
         for (unsigned w_index = 0; w_index < sent.size(); ++w_index) {
@@ -1020,10 +1049,16 @@ vector<double> log_prob_parser_particle(ComputationGraph* hg,
                     //get the valid actions for the particle
                     vector<unsigned> current_valid_actions;
                     for (auto a: possible_actions) {
-                        if (IsActionForbidden_Generative(adict.convert(a), particles[y]->prev_a, particles[y]->terms.size(),
-                                                         particles[y]->stack.size(), particles[y]->nopen_parens))
-                            continue;
-                        current_valid_actions.push_back(a);
+//                        bool add = true;
+//                        if (adict.convert(a)[0] == 'R'){
+//                           int i = particles[y]->is_open_paren.size() - 1; //get the last thing on the stack
+//                           while(particles[y]->is_open_paren[i] < 0) { --i; }
+//                           if (i < 0) add = false;}
+//                        add = add && (not IsActionForbidden_Generative(adict.convert(a), particles[y]->prev_a, particles[y]->terms.size(),
+//                                                                 particles[y]->stack.size(), particles[y]->nopen_parens));
+//                        if (add) current_valid_actions.push_back(a);
+                        if (canDoAction(adict.convert(a), particles[y])) current_valid_actions.push_back(a);
+
                     }
                     //get the stack, action, and term summaries from the LSTMs
                     Expression stack_summary = particles[y]->stack_lstm.back();
@@ -1053,7 +1088,7 @@ vector<double> log_prob_parser_particle(ComputationGraph* hg,
                     a_char = adict.convert(action)[0];
                     double new_score = 0;
                     unsigned wordid = sent.raw[w_index];
-                    //re=weight by P(w_t|y)
+                    //re-weight by P(w_t|y)
                     if (a_char == 'S'){
                         new_score = as_scalar((-cfsm->neg_log_softmax(nlp_t, wordid)).value());}
                     ParserStateAction* p_state_action = new ParserStateAction(particles[y], action, a_char, wordid, new_score, 0);
@@ -1075,7 +1110,7 @@ vector<double> log_prob_parser_particle(ComputationGraph* hg,
                         shift_count++;
                     }
                 }
-                cerr << exp(particles[y]->log_prob_additional_parse);
+                cerr << exp(particles[y]->log_prob_additional_parse) << " " << particles[y]->stack.size();
                 cerr << endl;
             }
             //resample the particles based on the updated weights
@@ -1094,11 +1129,36 @@ vector<double> log_prob_parser_particle(ComputationGraph* hg,
                     if (random <= partial_total){ resampled.push_back(particles[i]); break;}
                 }
             }
+            //surprisal = log(N/sum(P(w|C)))
             surprisals.push_back(log(num_particles/total));
             assert(particles.size() == resampled.size());
             particles.clear();
-            for (auto re : resampled){
-                particles.push_back(re);
+            for (ParserState* re : resampled){
+                //particles.push_back(re);
+                ParserState* currstate = new ParserState();
+                currstate->stack_lstm = re->stack_lstm;
+                currstate->term_lstm = re->term_lstm;
+                currstate->action_lstm = re->action_lstm;
+                currstate->const_lstm_fwd = re->const_lstm_fwd;
+                currstate->const_lstm_rev = re->const_lstm_rev;
+                currstate->terms = re->terms;
+                currstate->is_open_paren = re->is_open_paren;
+                currstate->nt_count = re->nt_count;
+                currstate->stack = re->stack;
+                currstate->stack_content = re->stack_content;
+                currstate->results = re->results;
+                currstate->score = re->score;
+                currstate->nopen_parens = re->nopen_parens;
+                currstate->prev_a = re->prev_a;
+                currstate->fringe_index = re->fringe_index;
+                currstate->log_posterior_parse = re->log_posterior_parse;
+                currstate->log_prob_additional_parse = re->log_prob_additional_parse;
+                particles.push_back(currstate);
+//                for (int j = 0; j < re->stack_content.size(); j++){
+//                    cerr << re->stack_content[j] << " ";
+//                }
+//
+//                cerr << "\nstack size: " << re->stack_content.size() << endl;
             }
             resampled.clear();
         }
