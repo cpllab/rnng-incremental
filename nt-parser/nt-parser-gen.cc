@@ -1,7 +1,5 @@
-//
-// This file implements word-synchronous beam search with fast-tracking to
-// estimate word surprisals.
-//
+/**This file implements word-synchronous beam search with fast-tracking and particle
+ * filtering to estimate word surprisals*/
 
 #include <cstdlib>
 #include <iostream>
@@ -64,7 +62,6 @@ unsigned NUM_PARTICLES = 100;
 std::map<int,int> action2NTindex;  // pass in index of action NT(X), return index of X
 
 using namespace dynet;
-// using namespace dynet::expr;
 using namespace std;
 namespace po = boost::program_options;
 
@@ -73,6 +70,7 @@ unordered_map<unsigned, vector<float>> pretrained;
 
 ClassFactoredSoftmaxBuilder *cfsm = nullptr;
 
+/**Get, parse, and return the command-line arguments*/
 void InitCommandLine(int argc, char** argv, po::variables_map* conf) {
   po::options_description opts("Configuration options");
   opts.add_options()
@@ -109,11 +107,12 @@ void InitCommandLine(int argc, char** argv, po::variables_map* conf) {
     exit(1);
   }
   if (conf->count("training_data") == 0) {
-    cerr << "Please specify --traing_data (-T): this is required to determine the vocabulary mapping, even if the parser is used in prediction mode.\n";
+    cerr << "Please specify --training_data (-T): this is required to determine the vocabulary mapping, even if the parser is used in prediction mode.\n";
     exit(1);
   }
 }
 
+/**The structure that stores the states and parsing functions (greedy, beam, particle) of our parser*/
 struct ParserBuilder {
   LSTMBuilder stack_lstm; // (layers, input, hidden, trainer)
   LSTMBuilder term_lstm; // (layers, input, hidden, trainer)
@@ -129,20 +128,14 @@ struct ParserBuilder {
   Parameter p_A; // action lstm to parser state
   Parameter p_S; // stack lstm to parser state
   Parameter p_T; // term lstm to parser state
-  //Parameters* p_pbias2; // parser state bias
-  //Parameters* p_A2; // action lstm to parser state
-  //Parameters* p_S2; // stack lstm to parser state
-  //Parameters* p_w2l; // word to LSTM input
-  //Parameters* p_t2l; // pretrained word embeddings to LSTM input
-  //Parameters* p_ib; // LSTM input bias
   Parameter p_cbias; // composition function bias
   Parameter p_p2a;   // parser state to action
   Parameter p_action_start;  // action bias
   Parameter p_abias;  // action bias
   Parameter p_stack_guard;  // end of stack
-
   Parameter p_cW;
 
+  /**constructor function for the ParserBuilder structure*/
   explicit ParserBuilder(ParameterCollection* model, const unordered_map<unsigned, vector<float>>& pretrained) :
       stack_lstm(LAYERS, LSTM_INPUT_DIM, HIDDEN_DIM, *model),
       term_lstm(LAYERS, INPUT_DIM, HIDDEN_DIM, *model),  // sequence of generated terminals
@@ -158,18 +151,11 @@ struct ParserBuilder {
       p_A(model->add_parameters({HIDDEN_DIM, HIDDEN_DIM})),
       p_S(model->add_parameters({HIDDEN_DIM, HIDDEN_DIM})),
       p_T(model->add_parameters({HIDDEN_DIM, HIDDEN_DIM})),
-      //p_pbias2(model->add_parameters({HIDDEN_DIM})),
-      //p_A2(model->add_parameters({HIDDEN_DIM, HIDDEN_DIM})),
-      //p_S2(model->add_parameters({HIDDEN_DIM, HIDDEN_DIM})),
-      //p_w2l(model->add_parameters({LSTM_INPUT_DIM, INPUT_DIM})),
-      //p_ib(model->add_parameters({LSTM_INPUT_DIM})),
       p_cbias(model->add_parameters({LSTM_INPUT_DIM})),
       p_p2a(model->add_parameters({ACTION_SIZE, HIDDEN_DIM})),
       p_action_start(model->add_parameters({ACTION_DIM})),
       p_abias(model->add_parameters({ACTION_SIZE})),
-
       p_stack_guard(model->add_parameters({LSTM_INPUT_DIM})),
-
       p_cW(model->add_parameters({LSTM_INPUT_DIM, LSTM_INPUT_DIM * 2})) {
     if (pretrained.size() > 0) {
       cerr << "Pretrained embeddings not implemented\n";
@@ -177,9 +163,7 @@ struct ParserBuilder {
     }
   }
 
-
-
-// checks to see if a proposed action is valid in discriminative models
+/**Helper function used by log_prob_parser to determine if the action is allowed or forbidden*/
 static bool IsActionForbidden_Generative(const string& a, char prev_a, unsigned tsize, unsigned ssize, unsigned nopen_parens) {
   bool is_shift = (a[0] == 'S' && a[1]=='H');
   bool is_reduce = (a[0] == 'R' && a[1]=='E');
@@ -196,10 +180,9 @@ static bool IsActionForbidden_Generative(const string& a, char prev_a, unsigned 
   return false;
 }
 
-// returns parse actions for input sentence (in training just returns the reference)
-// this lets us use pretrained embeddings, when available, for words that were OOV in the
-// parser training data
-// if sent is empty, generate a sentence
+/**Returns parse actions for input sentence (in training just returns the reference)
+this lets us use pretrained embeddings, when available, for words that were OOV in the
+parser training data if sent is empty, generate a sentence*/
 vector<unsigned> log_prob_parser(ComputationGraph* hg,
                      Expression& loss,
                      const parser::Sentence& sent,
@@ -463,49 +446,44 @@ vector<unsigned> log_prob_parser(ComputationGraph* hg,
     return results;
   }
 
+/**A structure used by beam search and particle filtering to keep track of the state of the particle/beam element*/
 struct ParserState {
   LSTMBuilder stack_lstm;
   LSTMBuilder term_lstm;
   LSTMBuilder action_lstm;
   LSTMBuilder const_lstm_fwd;
   LSTMBuilder const_lstm_rev;
-
   vector<Expression> terms;
   vector<int> is_open_paren;
   unsigned nt_count;
-
   vector<Expression> stack;
   vector<string> stack_content;
   vector<unsigned> results;  // sequence of predicted actions
-  // bool complete;
-  // vector<Expression> log_probs;
   double score;
   int nopen_parens;
   char prev_a;
   unsigned fringe_index;
   double log_posterior_parse;
   double log_prob_additional_parse;
-
 };
 
+/**Provides a way to compare multiple parser states for pruning and sorting*/
 struct ParserStateCompare {
   bool operator()(const ParserState* a, const ParserState* b) const {
     return a->score > b->score;
   }
 };
 
+/**Prunes a beam of ParserStates to the top k most probable elements*/
 static void prune(vector<ParserState*>& pq, unsigned k) {
   if (pq.size() == 1) return;
   if (k > pq.size()) k = pq.size();
   partial_sort(pq.begin(), pq.begin() + k, pq.end(), ParserStateCompare());
   pq.resize(k);
   reverse(pq.begin(), pq.end());
-  //cerr << "PRUNE\n";
-  //for (unsigned i = 0; i < pq.size(); ++i) {
-  //  cerr << pq[i].score << endl;
-  //}
 }
 
+/**Defines an action that can be applied to a parser state, and how to apply it*/
 struct ParserStateAction {
   ParserState* ps;
   unsigned action;
@@ -514,6 +492,7 @@ struct ParserStateAction {
   double score;
   unsigned fringe_idx;
 
+  /**Constructor of this structure*/
   ParserStateAction( ParserState* pstate,  unsigned a,  char achar, unsigned wid, double sc,  unsigned idx) {
     ps = pstate;
     action = a;
@@ -523,8 +502,8 @@ struct ParserStateAction {
     fringe_idx = idx;
   }
 
+  /**Apply the action and return a new ParserState representing the result*/
   ParserState* applyAction(ComputationGraph* hg,  const Expression& cbias, const Expression& cW, const LookupParameter& p_a, const LookupParameter& p_w, const LookupParameter& p_nt, const LookupParameter& p_ntup, bool apply_dropout){ // p_a, p_nt, p_ntup
-
     ParserState* p_state = new ParserState();
     *p_state = *ps;
     p_state->fringe_index = fringe_idx;
@@ -537,7 +516,7 @@ struct ParserStateAction {
     Expression actione = lookup(*hg, p_a, action);
     p_state->action_lstm.add_input(actione);
 
-    // do action
+    // do action: case NT
     if (a_char == 'N'){
       ++p_state->nopen_parens;
       auto it = action2NTindex.find(action);
@@ -549,20 +528,15 @@ struct ParserStateAction {
       p_state->stack.push_back(nt_embedding);
       p_state->stack_lstm.add_input(nt_embedding);
       p_state->is_open_paren.push_back(nt_index);
-    }else if (a_char == 'R'){
+    } // do action: case REDUCE
+    else if (a_char == 'R'){
       --p_state->nopen_parens;
-//      for (int i = 0; i < p_state->stack_content.size(); i++){
-//          cerr << p_state->stack_content[i] << " ";
-//      }
-//      cerr << endl;
       assert(p_state->stack.size() > 2); // dummy symbol means > 2 (not >= 2)
       assert(p_state->stack_content.size() > 2 && p_state->stack.size() == p_state->stack_content.size());
       // find what paren we are closing
       cerr << p_state->is_open_paren.size() << endl;
       int i = p_state->is_open_paren.size() - 1; //get the last thing on the stack
-      while(p_state->is_open_paren[i] < 0) { --i;
-//          cerr << i << " "<< p_state->is_open_paren[i] << endl;
-          assert(i >= 0); } //iteratively decide whether or not it's a non-terminal
+      while(p_state->is_open_paren[i] < 0) { --i; assert(i >= 0); } //iteratively decide whether or not it's a non-terminal
       Expression nonterminal = lookup(*hg, p_ntup, p_state->is_open_paren[i]);
       int nchildren = p_state->is_open_paren.size() - i - 1;
       assert(nchildren > 0);
@@ -578,19 +552,16 @@ struct ParserStateAction {
       // cerr << "Now printing the children" << endl;
       // cerr << "--------------------------------" << endl;
       for (i = 0; i < nchildren; ++i) {
-	assert (p_state->stack_content.size() == p_state->stack.size());
-	children[i] = p_state->stack.back();
-	p_state->stack.pop_back();
-	p_state->stack_lstm.rewind_one_step();
-	p_state->is_open_paren.pop_back();
-	curr_word = p_state->stack_content.back();
-	// cerr << "At the back of the stack (supposed to be one of the children): " << curr_word << endl;
-	p_state->stack_content.pop_back();
+        assert (p_state->stack_content.size() == p_state->stack.size());
+        children[i] = p_state->stack.back();
+        p_state->stack.pop_back();
+        p_state->stack_lstm.rewind_one_step();
+        p_state->is_open_paren.pop_back();
+        curr_word = p_state->stack_content.back();
+        // cerr << "At the back of the stack (supposed to be one of the children): " << curr_word << endl;
+        p_state->stack_content.pop_back();
       }
       assert (p_state->stack_content.size() == p_state->stack.size());
-
-      // cerr << "Doing REDUCE operation" << endl;
-      
       p_state->is_open_paren.pop_back(); // nt symbol
       p_state->stack.pop_back(); // nonterminal dummy
       p_state->stack_lstm.rewind_one_step(); // nt symbol
@@ -600,20 +571,18 @@ struct ParserStateAction {
       p_state->stack_content.pop_back();
       assert (p_state->stack.size() == p_state->stack_content.size());
       // cerr << "Done reducing" << endl;
-      
       // BUILD TREE EMBEDDING USING BIDIR LSTM
       p_state->const_lstm_fwd.add_input(nonterminal);
       p_state->const_lstm_rev.add_input(nonterminal);
-      
       for (i = 0; i < nchildren; ++i) {
-	p_state->const_lstm_fwd.add_input(children[i]);
-	p_state->const_lstm_rev.add_input(children[nchildren - i - 1]);
+        p_state->const_lstm_fwd.add_input(children[i]);
+        p_state->const_lstm_rev.add_input(children[nchildren - i - 1]);
       }
       Expression cfwd = p_state->const_lstm_fwd.back();
       Expression crev = p_state->const_lstm_rev.back();
       if (apply_dropout) {
-	cfwd = dropout(cfwd, DROPOUT);
-	crev = dropout(crev, DROPOUT);
+        cfwd = dropout(cfwd, DROPOUT);
+        crev = dropout(crev, DROPOUT);
       }
       Expression c = concatenate({cfwd, crev});
       Expression composed = rectify(affine_transform({cbias, cW, c}));
@@ -621,10 +590,9 @@ struct ParserStateAction {
       p_state->stack.push_back(composed);
       p_state->stack_content.push_back(curr_word);
       p_state->is_open_paren.push_back(-1); // we just closed a paren at this position            
-    }else { // SHIFT
+    }else { // apply action: SHIFT
       assert (wordid != 0);
       p_state->stack_content.push_back(termdict.convert(wordid)); //add the string of the word to the stack
-      // ++termc;
       Expression word = lookup(*hg, p_w, wordid);
       p_state->terms.push_back(word);
       p_state->term_lstm.add_input(word);
@@ -634,48 +602,45 @@ struct ParserStateAction {
     }
     return p_state;
   }
-
 };
 
+/**Defines a way to compare two ParserStateActions*/
 struct ParserStateActionCompare {
   bool operator()(const ParserStateAction* a, const ParserStateAction* b) const {
     return a->score > b->score;
   }
 };
 
+/**Prunes a beam of ParserStateActions to the top k*/
 static void prune(vector<ParserStateAction*>& pq, unsigned k) {
   if (pq.size() == 1) return;
   if (k > pq.size()) k = pq.size();
   partial_sort(pq.begin(), pq.begin() + k, pq.end(), ParserStateActionCompare());
   pq.resize(k);
   reverse(pq.begin(), pq.end());
-  //cerr << "PRUNE\n";
-  //for (unsigned i = 0; i < pq.size(); ++i) {
-  //  cerr << pq[i].score << endl;
-  //}
 }
 
 
-//checks to see if a proposed action is valid in discriminative models
-    bool canDoAction(const string& a, ParserState* p){
-        bool is_shift = (a[0] == 'S' && a[1] == 'H');
-        bool is_reduce = (a[0] == 'R' && a[1]=='E');
-        bool is_nt = (a[0] == 'N');
-        assert(is_shift || is_reduce || is_nt);
-        if (is_reduce){
-            int i = p->is_open_paren.size() -1;
-            while(p->is_open_paren[i] < 0){--i;}
-            if (i < 0) return false;
-        }
-        static const unsigned MAX_OPEN_NTS = 100;
-        if (is_nt && p->nopen_parens >= MAX_OPEN_NTS) return false;
-        if (p->stack.size() == 1){
-            if (!is_nt) return false;
-            return true;
-        }
-        if (is_reduce && p->prev_a == 'N') return false;
+/**Checks to see if a proposed action is valid in generative models using beam search or particle filtering*/
+bool canDoAction(const string& a, ParserState* p){
+    bool is_shift = (a[0] == 'S' && a[1] == 'H');
+    bool is_reduce = (a[0] == 'R' && a[1]=='E');
+    bool is_nt = (a[0] == 'N');
+    assert(is_shift || is_reduce || is_nt);
+    if (is_reduce){
+        int i = p->is_open_paren.size() -1;
+        while(p->is_open_paren[i] < 0){--i;}
+        if (i < 0) return false;
+    }
+    static const int MAX_OPEN_NTS = 100;
+    if (is_nt && p->nopen_parens >= MAX_OPEN_NTS) return false;
+    if (p->stack.size() == 1){
+        if (!is_nt) return false;
         return true;
     }
+    if (is_reduce && p->prev_a == 'N') return false;
+    return true;
+}
 
 /**Probabilistic parsing using word-synchronous beam-search*/
 vector<double> log_prob_parser_beam(ComputationGraph* hg,
@@ -789,9 +754,7 @@ vector<double> log_prob_parser_beam(ComputationGraph* hg,
           //get all current valid actions at the parser state
           vector<unsigned> current_valid_actions;
           for (auto a: possible_actions) {
-//            if (IsActionForbidden_Generative(adict.convert(a), p_this->prev_a, p_this->terms.size(), p_this->stack.size(), p_this->nopen_parens))
-//              continue;
-            if (canDoAction(adict.convert(a), p_this)) current_valid_actions.push_back(a);
+              if (canDoAction(adict.convert(a), p_this)) current_valid_actions.push_back(a);
           }
           //get the corresponding stack, action, and term summaries, and apply dropout if needed
           Expression stack_summary = p_this->stack_lstm.back();
@@ -838,15 +801,7 @@ vector<double> log_prob_parser_beam(ComputationGraph* hg,
                 //if came by lexical action, then add it to possible next actions
 	            if(fringe[k]->a_char == 'S'){
                     pq_next.push_back(newstate);
-                //otherwise, structural. If action is reduce, make sure it's possible
-//	            }else if (fringe[k]->a_char == 'R'){
-//                    int i = newstate->is_open_paren.size() - 1; //get the last thing on the stack
-//                    while(newstate->is_open_paren[i] < 0) { --i; }
-//                    if(i>=0){
-//                        pq_this_new.push_back(newstate);
-//                    }else{
-//                        need_to_delete.insert(newstate);}
-//                // append structural actions to the current state.
+                //otherwise, structural, and add to the new pq_next
                 }else{
                     pq_this_new.push_back(newstate);
                 }
@@ -998,7 +953,7 @@ vector<double> log_prob_parser_particle(ComputationGraph* hg,
         //a vector in which we'll store the particles
         vector<ParserState*> particles;
         //intialize each particle
-        for (int i = 0; i < num_particles; i++){
+        for (unsigned i = 0; i < num_particles; i++){
             vector<unsigned> results;
             // -1 if no nonterminal has a parenthesis open, otherwise index of NT
             vector<int> is_open_paren;
@@ -1032,35 +987,23 @@ vector<double> log_prob_parser_particle(ComputationGraph* hg,
             particles.push_back(currstate);
         }
 
-        //unordered_set<ParserState*> need_to_delete;
-
-        //store the surprisals and log probabilities
+        //store the surprisals to return at the end
         vector<double> surprisals;
-        //vector<double> log_probs;
 
         //iterate through the sentence
         for (unsigned w_index = 0; w_index < sent.size(); ++w_index) {
             cerr << "Current word: " << termdict.convert(sent.raw[w_index]) << " ,index " << w_index << endl;
             cerr << "List of partial parses: \n";
-            for (int y = 0; y < num_particles; y++) {
-                //we want to repeatedly sample until we reach a shift operation
+            for (unsigned y = 0; y < num_particles; y++) {
+                //repeatedly sample until we reach a shift operation
                 char a_char = '0';
                 while (a_char != 'S'){
                     //get the valid actions for the particle
                     vector<unsigned> current_valid_actions;
                     for (auto a: possible_actions) {
-//                        bool add = true;
-//                        if (adict.convert(a)[0] == 'R'){
-//                           int i = particles[y]->is_open_paren.size() - 1; //get the last thing on the stack
-//                           while(particles[y]->is_open_paren[i] < 0) { --i; }
-//                           if (i < 0) add = false;}
-//                        add = add && (not IsActionForbidden_Generative(adict.convert(a), particles[y]->prev_a, particles[y]->terms.size(),
-//                                                                 particles[y]->stack.size(), particles[y]->nopen_parens));
-//                        if (add) current_valid_actions.push_back(a);
                         if (canDoAction(adict.convert(a), particles[y])) current_valid_actions.push_back(a);
-
                     }
-                    //get the stack, action, and term summaries from the LSTMs
+                    //get the stack, action, and term summaries from the LSTMs, applying dropout if needed
                     Expression stack_summary = particles[y]->stack_lstm.back();
                     Expression action_summary = particles[y]->action_lstm.back();
                     Expression term_summary = particles[y]->term_lstm.back();
@@ -1082,21 +1025,21 @@ vector<double> log_prob_parser_particle(ComputationGraph* hg,
                     int action = -1;
                     for (unsigned i = 0; i < current_valid_actions.size(); i++){
                         total += exp(as_scalar(pick(adiste, current_valid_actions[i]).value()));
-                        if (random <= total){ action = current_valid_actions[i]; break; }
+                        if (random <= total){ action = current_valid_actions[i]; break;}
                     }
                     // set the character to correspond to the action
                     a_char = adict.convert(action)[0];
                     double new_score = 0;
                     unsigned wordid = sent.raw[w_index];
-                    //re-weight by P(w_t|y)
-                    if (a_char == 'S'){
-                        new_score = as_scalar((-cfsm->neg_log_softmax(nlp_t, wordid)).value());}
+                    //re-weight by P(w_t|y) if the operation is a shift
+                    if (a_char == 'S'){new_score = as_scalar((-cfsm->neg_log_softmax(nlp_t, wordid)).value());}
+                    //apply the action and update the particle so we can proceed until we reach a shift
                     ParserStateAction* p_state_action = new ParserStateAction(particles[y], action, a_char, wordid, new_score, 0);
                     ParserState* newstate = p_state_action->applyAction(hg, cbias, cW, p_a, p_w, p_nt, p_ntup, apply_dropout);
-                    //update the particle so that we can proceed with parsing actions if we haven't yet reached a shift
                     particles[y] = newstate;
                     assert(particles[y]->log_prob_additional_parse == new_score);
                 }
+                // print out the partial parses
                 int shift_count = 0;
                 for (auto action : particles[y]->results){
                     const string& a = adict.convert(action);
@@ -1115,13 +1058,11 @@ vector<double> log_prob_parser_particle(ComputationGraph* hg,
             }
             //resample the particles based on the updated weights
             vector<ParserState*> resampled;
-            //get the total for re-normalization
+            //get the total for re-normalization and for computing surprisal
             float total = 0;
-            for (unsigned i = 0; i < num_particles; i++){
-                total += exp(particles[i]->log_prob_additional_parse);
-            }
+            for (unsigned i = 0; i < num_particles; i++){total += exp(particles[i]->log_prob_additional_parse);}
             //sample for each particle by generating a random number between 0 and 1
-            for (int p = 0; p < num_particles; p++){
+            for (unsigned p = 0; p < num_particles; p++){
                 float partial_total = 0;
                 float random = rand01();
                 for (unsigned i = 0; i < num_particles; i++){
@@ -1132,42 +1073,16 @@ vector<double> log_prob_parser_particle(ComputationGraph* hg,
             //surprisal = log(N/sum(P(w|C)))
             surprisals.push_back(log(num_particles/total));
             assert(particles.size() == resampled.size());
+            //update the particles based on the values we have just resampled
             particles.clear();
-            for (ParserState* re : resampled){
-                //particles.push_back(re);
-                ParserState* currstate = new ParserState();
-                currstate->stack_lstm = re->stack_lstm;
-                currstate->term_lstm = re->term_lstm;
-                currstate->action_lstm = re->action_lstm;
-                currstate->const_lstm_fwd = re->const_lstm_fwd;
-                currstate->const_lstm_rev = re->const_lstm_rev;
-                currstate->terms = re->terms;
-                currstate->is_open_paren = re->is_open_paren;
-                currstate->nt_count = re->nt_count;
-                currstate->stack = re->stack;
-                currstate->stack_content = re->stack_content;
-                currstate->results = re->results;
-                currstate->score = re->score;
-                currstate->nopen_parens = re->nopen_parens;
-                currstate->prev_a = re->prev_a;
-                currstate->fringe_index = re->fringe_index;
-                currstate->log_posterior_parse = re->log_posterior_parse;
-                currstate->log_prob_additional_parse = re->log_prob_additional_parse;
-                particles.push_back(currstate);
-//                for (int j = 0; j < re->stack_content.size(); j++){
-//                    cerr << re->stack_content[j] << " ";
-//                }
-//
-//                cerr << "\nstack size: " << re->stack_content.size() << endl;
-            }
+            for (ParserState* re : resampled){particles.push_back(re);}
             resampled.clear();
         }
         return surprisals;
     }
-
 };
 
-
+/**Signal handler for graceful termination*/
 void signal_callback_handler(int /* signum */) {
   if (requested_stop) {
     cerr << "\nReceived SIGINT again, quitting.\n";
@@ -1385,7 +1300,6 @@ int main(int argc, char** argv) {
               double lp = as_scalar(hg.incremental_forward(tot_neglogprob));
               llh += lp;
            }
-           double lp = 0;
            trs += actions.size();
         }
         auto t_end = chrono::high_resolution_clock::now();
@@ -1472,12 +1386,12 @@ int main(int argc, char** argv) {
         vector<double> surprisals;
         bool run_beam = conf["beam"].as<bool>();
         if (run_beam){
-            cerr << "RUNNING BEAM SEARCH\n";
+            cerr << "Running beam search with beam size " << BEAM_SIZE << endl;
             surprisals  = parser.log_prob_parser_beam(&hg, sentence, &right, BEAM_SIZE, FASTTRACK_BEAM_SIZE, WORD_BEAM_SIZE, false);
         }
         else {
-            cerr << "RUNNING PARTICLE FILTERING\n";
-            surprisals = parser.log_prob_parser_particle(&hg, sentence, &right, 10, false);
+            cerr << "Running particle filtering with " << NUM_PARTICLES << " particles\n";
+            surprisals = parser.log_prob_parser_particle(&hg, sentence, &right, NUM_PARTICLES, false);
         }
         //write out the surprisals
         for(unsigned k = 0; k < surprisals.size(); ++k){
